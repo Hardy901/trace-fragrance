@@ -53,6 +53,12 @@ service cloud.firestore {
         && orderId.matches('^TRC-[A-Z0-9\\-]+$');
     }
 
+    function isValidTrackingKey(trackingKey) {
+      return trackingKey is string
+        && trackingKey.size() == 40
+        && trackingKey.matches('^[a-f0-9]{40}$');
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -262,6 +268,7 @@ service cloud.firestore {
           'paymentReference',
           'fulfillmentStatus',
           'trackingNumber',
+          'trackingKey',
           'adminNotes',
           'updatedBy',
           'createdAt',
@@ -319,6 +326,7 @@ service cloud.firestore {
         && data.fulfillmentStatus in ['placed', 'confirmed', 'packed', 'dispatched', 'delivered', 'cancelled']
         && data.trackingNumber is string
         && data.trackingNumber.size() <= 80
+        && (!('trackingKey' in data) || (data.trackingKey is string && (data.trackingKey == '' || isValidTrackingKey(data.trackingKey))))
         && data.adminNotes is string
         && data.adminNotes.size() <= 500
         && data.updatedBy is string
@@ -332,6 +340,103 @@ service cloud.firestore {
         && data.trackingNumber == ''
         && data.adminNotes == ''
         && data.updatedBy == ''
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && ((data.paymentType == 'cod'
+              && data.paymentMethod == 'cod'
+              && data.paymentStatus == 'pending_cod')
+            || (data.paymentType == 'prepaid'
+              && data.paymentMethod in ['upi', 'cards']
+              && data.paymentStatus in ['paid', 'pending_verification']));
+    }
+
+    function isValidOrderTracking(data, trackingKey) {
+      return data.keys().hasAll([
+          'trackingKey',
+          'orderNumber',
+          'customerFirstName',
+          'city',
+          'items',
+          'subtotal',
+          'discount',
+          'couponCode',
+          'shippingFee',
+          'codFee',
+          'totalPrice',
+          'paymentType',
+          'paymentMethod',
+          'paymentStatus',
+          'fulfillmentStatus',
+          'trackingNumber',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'trackingKey',
+          'orderNumber',
+          'customerFirstName',
+          'city',
+          'items',
+          'subtotal',
+          'discount',
+          'couponCode',
+          'shippingFee',
+          'codFee',
+          'totalPrice',
+          'paymentType',
+          'paymentMethod',
+          'paymentStatus',
+          'fulfillmentStatus',
+          'trackingNumber',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.trackingKey == trackingKey
+        && isValidTrackingKey(data.trackingKey)
+        && isValidOrderNumber(data.orderNumber)
+        && data.customerFirstName is string
+        && data.customerFirstName.size() >= 1
+        && data.customerFirstName.size() <= 60
+        && data.city is string
+        && data.city.size() >= 2
+        && data.city.size() <= 80
+        && data.items is list
+        && data.items.size() >= 1
+        && data.items.size() <= 20
+        && isValidOrderItem(data.items[0])
+        && (data.items.size() == 1 || isValidOrderItem(data.items[1]))
+        && data.subtotal is number
+        && data.subtotal >= 1
+        && data.subtotal <= 500000
+        && data.discount is number
+        && data.discount >= 0
+        && data.discount <= data.subtotal
+        && data.couponCode is string
+        && data.couponCode.size() <= 32
+        && data.couponCode.matches('^[A-Z0-9_\\-]*$')
+        && data.shippingFee is number
+        && data.shippingFee >= 0
+        && data.shippingFee <= 5000
+        && data.codFee is number
+        && data.codFee >= 0
+        && data.codFee <= 1000
+        && data.totalPrice is number
+        && data.totalPrice >= 0
+        && data.totalPrice <= 500000
+        && data.totalPrice == (data.subtotal - data.discount + data.shippingFee + data.codFee)
+        && data.paymentType in ['cod', 'prepaid']
+        && data.paymentMethod in ['cod', 'upi', 'cards']
+        && data.paymentStatus in ['pending_cod', 'cod_collected', 'paid', 'pending_verification', 'refunded']
+        && data.fulfillmentStatus in ['placed', 'confirmed', 'packed', 'dispatched', 'delivered', 'cancelled']
+        && data.trackingNumber is string
+        && data.trackingNumber.size() <= 80
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInitialTrackingState(data) {
+      return data.fulfillmentStatus == 'placed'
+        && data.trackingNumber == ''
         && data.createdAt == request.time
         && data.updatedAt == request.time
         && ((data.paymentType == 'cod'
@@ -375,6 +480,7 @@ service cloud.firestore {
           'coupon_updated',
           'coupon_deleted',
           'order_updated',
+          'order_deleted',
           'admin_added',
           'admin_removed',
           'session_login'
@@ -461,7 +567,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // COLLECTION 3: /orders/{orderId} (PII Isolated — Strictly Admin Read/Update)
+    // COLLECTION 3: /orders/{orderId} (PII Isolated — Strictly Admin Read/Update/Delete)
     // =========================================================================
     match /orders/{orderId} {
       allow get: if isVerifiedUser() && isValidOrderNumber(orderId) && isAdmin();
@@ -501,11 +607,53 @@ service cloud.firestore {
           'updatedAt'
         ])
         && isAdmin();
-      allow delete: if false;
+      allow delete: if isVerifiedUser()
+        && isValidOrderNumber(orderId)
+        && isAdmin();
     }
 
     // =========================================================================
-    // COLLECTION 4: /admins/{adminUid} (Owner-Governed Admin RBAC Registry)
+    // COLLECTION 4: /order_tracking/{trackingKey} (PII-Free Customer Tracking)
+    // =========================================================================
+    match /order_tracking/{trackingKey} {
+      allow get: if isValidTrackingKey(trackingKey);
+      allow list: if false;
+      allow create: if isValidTrackingKey(trackingKey)
+        && isValidOrderTracking(incoming(), trackingKey)
+        && isValidInitialTrackingState(incoming())
+        && existsAfter(/databases/$(database)/documents/orders/$(incoming().orderNumber));
+      allow update: if isVerifiedUser()
+        && isValidTrackingKey(trackingKey)
+        && isValidOrderTracking(incoming(), trackingKey)
+        && incoming().trackingKey == existing().trackingKey
+        && incoming().orderNumber == existing().orderNumber
+        && incoming().customerFirstName == existing().customerFirstName
+        && incoming().city == existing().city
+        && incoming().items == existing().items
+        && incoming().subtotal == existing().subtotal
+        && incoming().discount == existing().discount
+        && incoming().couponCode == existing().couponCode
+        && incoming().shippingFee == existing().shippingFee
+        && incoming().codFee == existing().codFee
+        && incoming().totalPrice == existing().totalPrice
+        && incoming().paymentType == existing().paymentType
+        && incoming().paymentMethod == existing().paymentMethod
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'paymentStatus',
+          'fulfillmentStatus',
+          'trackingNumber',
+          'updatedAt'
+        ])
+        && isAdmin();
+      allow delete: if isVerifiedUser()
+        && isValidTrackingKey(trackingKey)
+        && isAdmin();
+    }
+
+    // =========================================================================
+    // COLLECTION 5: /admins/{adminUid} (Owner-Governed Admin RBAC Registry)
     // =========================================================================
     match /admins/{adminUid} {
       allow get: if isVerifiedUser()
@@ -530,7 +678,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // COLLECTION 5: /audit_logs/{logId} (Immutable Append-Only Security Trail)
+    // COLLECTION 6: /audit_logs/{logId} (Immutable Append-Only Security Trail)
     // =========================================================================
     match /audit_logs/{logId} {
       allow get: if isVerifiedUser() && isValidId(logId) && isAdmin();

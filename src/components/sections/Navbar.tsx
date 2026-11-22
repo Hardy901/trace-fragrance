@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, ShoppingBag, Menu, X, Sparkles } from 'lucide-react';
+import { Search, ShoppingBag, Menu, X, Sparkles, Package } from 'lucide-react';
 import { TraceLogo } from '../brand/TraceLogo';
 import { useCart } from '../../context/CartContext';
 
 interface NavbarProps {
   onOpenSearch: () => void;
+  onOpenOrders: () => void;
+  savedOrdersCount: number;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  onOpenSearch,
+  onOpenOrders,
+  savedOrdersCount,
+}) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { totalItems, openCart } = useCart();
@@ -106,9 +112,35 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
               </a>
             </nav>
 
-            {/* Right: Search & Cart + Mobile toggle */}
-            <div className="flex items-center space-x-4 sm:space-x-6">
+            {/* Right: Orders, Search & Cart + Mobile toggle */}
+            <div className="flex items-center space-x-3 sm:space-x-5">
               <button
+                type="button"
+                onClick={onOpenOrders}
+                className={`inline-flex items-center gap-1.5 transition-colors duration-300 p-1.5 focus:outline-none group cursor-pointer relative ${
+                  isScrolled ? 'text-[#242321] hover:text-[#713D43]' : 'text-[#FAF8F4] hover:text-[#DED4C7]'
+                }`}
+                aria-label={
+                  savedOrdersCount > 0
+                    ? `My Orders (${savedOrdersCount} saved)`
+                    : 'My Orders'
+                }
+              >
+                <div className="relative">
+                  <Package className="w-4 h-4 transition-transform group-hover:scale-110" />
+                  {savedOrdersCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-[#713D43] text-[#FAF8F4] text-[9px] font-mono font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                      {savedOrdersCount}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden lg:inline text-xs font-body tracking-[0.2em] font-medium whitespace-nowrap">
+                  ORDERS
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={onOpenSearch}
                 className={`inline-flex items-center gap-1.5 transition-colors duration-300 p-1.5 focus:outline-none group cursor-pointer ${
                   isScrolled ? 'text-[#242321] hover:text-[#713D43]' : 'text-[#FAF8F4] hover:text-[#DED4C7]'
@@ -122,6 +154,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
               </button>
 
               <button
+                type="button"
                 onClick={openCart}
                 className={`inline-flex items-center gap-2 transition-colors duration-300 p-1.5 focus:outline-none group cursor-pointer relative ${
                   isScrolled ? 'text-[#242321] hover:text-[#713D43]' : 'text-[#FAF8F4] hover:text-[#DED4C7]'
@@ -136,7 +169,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
                     </span>
                   )}
                 </div>
-                <span className="hidden lg:inline text-xs font-body tracking-[0.2em] font-medium">
+                <span className="hidden lg:inline text-xs font-body tracking-[0.2em] font-medium whitespace-nowrap">
                   BAG {totalItems > 0 && `(${totalItems})`}
                 </span>
               </button>
@@ -198,13 +231,25 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
               </nav>
             </div>
 
-            <div className="pt-6 border-t border-[#DED4C7] space-y-3">
+            <div className="pt-6 border-t border-[#DED4C7] space-y-2.5">
               <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onOpenOrders();
+                }}
+                className="w-full py-2.5 px-4 bg-[#242321] text-xs font-body tracking-[0.2em] uppercase text-[#FAF8F4] hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>My Orders {savedOrdersCount > 0 ? `(${savedOrdersCount})` : ''}</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setIsMobileMenuOpen(false);
                   onOpenSearch();
                 }}
-                className="w-full py-2.5 px-4 bg-[#F3EFE8] text-xs font-body tracking-[0.2em] uppercase text-[#242321] flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 bg-[#F3EFE8] text-xs font-body tracking-[0.2em] uppercase text-[#242321] flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Search className="w-3.5 h-3.5" />
                 <span>Search Fragrances</span>

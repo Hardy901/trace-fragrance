@@ -23,6 +23,7 @@ export type AuditAction =
   | 'coupon_updated'
   | 'coupon_deleted'
   | 'order_updated'
+  | 'order_deleted'
   | 'admin_added'
   | 'admin_removed'
   | 'session_login';
@@ -89,10 +90,38 @@ export interface OrderRecord {
   paymentReference: string;
   fulfillmentStatus: FulfillmentStatus;
   trackingNumber: string;
+  trackingKey?: string;
   adminNotes: string;
   updatedBy: string;
   createdAt?: Timestamp | Date | string | null;
   updatedAt?: Timestamp | Date | string | null;
+}
+
+export interface OrderTrackingRecord {
+  trackingKey: string;
+  orderNumber: string;
+  customerFirstName: string;
+  city: string;
+  items: OrderItemSnapshot[];
+  subtotal: number;
+  discount: number;
+  couponCode: string;
+  shippingFee: number;
+  codFee: number;
+  totalPrice: number;
+  paymentType: PaymentType;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  fulfillmentStatus: FulfillmentStatus;
+  trackingNumber: string;
+  createdAt?: Timestamp | Date | string | null;
+  updatedAt?: Timestamp | Date | string | null;
+}
+
+export interface SavedCustomerOrderRef {
+  orderNumber: string;
+  trackingKey: string;
+  placedAt: string;
 }
 
 export interface AdminUserRecord {
@@ -168,6 +197,80 @@ export function formatINR(amount: number): string {
 
 export function normalizeCouponCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
+}
+
+export const TRACKING_KEY_REGEX = /^[a-f0-9]{40}$/;
+
+export function normalizeOrderNumber(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
+}
+
+export function extractFirstName(fullName: string): string {
+  const cleaned = fullName.trim().split(/\s+/)[0] || 'Guest';
+  return cleaned.slice(0, 60);
+}
+
+export async function deriveOrderTrackingKey(orderNumber: string, email: string): Promise<string> {
+  const normalizedOrder = normalizeOrderNumber(orderNumber);
+  const normalizedEmail = email.trim().toLowerCase();
+  const payload = `${normalizedOrder}|${normalizedEmail}`;
+  const bytes = new TextEncoder().encode(payload);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  const hex = Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  return hex.slice(0, 40);
+}
+
+const CUSTOMER_ORDERS_STORAGE_KEY = 'trace_customer_orders_v1';
+
+export function readSavedCustomerOrders(): SavedCustomerOrderRef[] {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(CUSTOMER_ORDERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (entry): entry is SavedCustomerOrderRef =>
+          Boolean(entry) &&
+          typeof entry.orderNumber === 'string' &&
+          typeof entry.trackingKey === 'string' &&
+          ORDER_NUMBER_REGEX.test(entry.orderNumber) &&
+          TRACKING_KEY_REGEX.test(entry.trackingKey)
+      )
+      .slice(0, 25);
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomerOrderRef(entry: SavedCustomerOrderRef): SavedCustomerOrderRef[] {
+  const existing = readSavedCustomerOrders().filter(
+    item => item.trackingKey !== entry.trackingKey && item.orderNumber !== entry.orderNumber
+  );
+  const next = [entry, ...existing].slice(0, 25);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(CUSTOMER_ORDERS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return next;
+}
+
+export function removeSavedCustomerOrderRef(trackingKey: string): SavedCustomerOrderRef[] {
+  const next = readSavedCustomerOrders().filter(item => item.trackingKey !== trackingKey);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(CUSTOMER_ORDERS_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return next;
 }
 
 export function generateOrderNumber(): string {

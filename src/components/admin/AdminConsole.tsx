@@ -22,6 +22,11 @@ import {
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useStoreConfig } from '../../context/StoreConfigContext';
 import { seedInitialStoreData } from '../../services/firestoreService';
+import {
+  fetchAdminVaultStatus,
+  logoutAdminVault,
+  type AdminVaultStatus,
+} from '../../services/adminPasscodeClient';
 import type {
   AdminUserRecord,
   AuditLogRecord,
@@ -57,7 +62,11 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
 
   const [activeTab, setActiveTab] = useState<AdminTab>('orders');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [isSessionLocked, setIsSessionLocked] = useState(false);
+
+  // Layer 1: Memory-only server-signed vault token (never written to localStorage/sessionStorage)
+  const [vaultToken, setVaultToken] = useState<string | null>(null);
+  const [vaultStatus, setVaultStatus] = useState<AdminVaultStatus | null>(null);
+  const [vaultLoading, setVaultLoading] = useState(true);
 
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -69,13 +78,67 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
   const [seeding, setSeeding] = useState(false);
   const [seedDone, setSeedDone] = useState(false);
 
-  // Inactivity auto-lock guard
+  const vaultUnlocked = Boolean(vaultToken);
+
+  // Check server-side vault configuration status on mount
   useEffect(() => {
-    if (!isAdmin || isSessionLocked) return;
-    let timer = window.setTimeout(() => setIsSessionLocked(true), SESSION_TIMEOUT_MS);
+    let mounted = true;
+    fetchAdminVaultStatus(null)
+      .then(status => {
+        if (mounted) setVaultStatus(status);
+      })
+      .catch(() => {
+        if (mounted) {
+          setVaultStatus({
+            configured: true,
+            source: 'env',
+            authenticated: false,
+            expiresAt: null,
+          });
+        }
+      })
+      .finally(() => {
+        if (mounted) setVaultLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleLockVault = async () => {
+    const tokenToRevoke = vaultToken;
+    setVaultToken(null);
+    await logoutAdminVault(tokenToRevoke);
+  };
+
+  const handleFullSignOut = async () => {
+    const tokenToRevoke = vaultToken;
+    setVaultToken(null);
+    await logoutAdminVault(tokenToRevoke);
+    await signOutAdmin();
+  };
+
+  const handleVaultUnlocked = (token: string, source: 'env' | 'runtime') => {
+    setVaultToken(token);
+    setVaultStatus({
+      configured: true,
+      source,
+      authenticated: true,
+      expiresAt: null,
+    });
+  };
+
+  // Inactivity auto-lock guard — revokes server vault token after 20 minutes idle
+  useEffect(() => {
+    if (!vaultUnlocked || !isAdmin) return;
+    let timer = window.setTimeout(() => {
+      void handleLockVault();
+    }, SESSION_TIMEOUT_MS);
     const resetTimer = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => setIsSessionLocked(true), SESSION_TIMEOUT_MS);
+      timer = window.setTimeout(() => {
+        void handleLockVault();
+      }, SESSION_TIMEOUT_MS);
     };
     const events: Array<keyof WindowEventMap> = ['mousemove', 'keydown', 'click', 'touchstart'];
     events.forEach(ev => window.addEventListener(ev, resetTimer, { passive: true }));
@@ -83,11 +146,11 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
       window.clearTimeout(timer);
       events.forEach(ev => window.removeEventListener(ev, resetTimer));
     };
-  }, [isAdmin, isSessionLocked]);
+  }, [vaultUnlocked, isAdmin]);
 
-  // Mount real-time protected Firestore listeners ONLY after verified admin authorization
+  // Mount real-time protected Firestore listeners ONLY after BOTH Vault unlock AND verified Firebase admin auth
   useEffect(() => {
-    if (!authReady || !isAdmin || !user) return;
+    if (!vaultUnlocked || !authReady || !isAdmin || !user) return;
 
     const ordersQuery = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
     const unsubOrders = onSnapshot(
@@ -154,46 +217,19 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
       unsubAdmins();
       unsubAudit();
     };
-  }, [authReady, isAdmin, user]);
+  }, [vaultUnlocked, authReady, isAdmin, user]);
 
-  // Hard security gate: render zero admin UI or data until verified admin
-  if (!authReady || !user || !isAdmin) {
-    return <AdminAuthGate onBackToStore={onBackToStore} />;
-  }
-
-  // Manual or inactivity session lock screen
-  if (isSessionLocked) {
+  // Hard two-layer security gate: render zero admin UI or data until Vault + Firebase Admin are both verified
+  if (!vaultUnlocked || !authReady || !user || !isAdmin) {
     return (
-      <div className="min-h-screen bg-[#FAF8F4] text-[#242321] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white border border-[#DED4C7] p-8 space-y-6 text-center">
-          <div className="w-12 h-12 bg-[#F3EFE8] border border-[#DED4C7] mx-auto flex items-center justify-center text-[#713D43]">
-            <Lock className="w-5 h-5" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="font-editorial text-3xl text-[#242321]">Session Locked</h1>
-            <p className="text-xs font-body text-[#242321]/70">
-              Your TRACE admin workspace was locked to protect customer order PII.
-            </p>
-            <p className="text-xs font-mono text-[#242321]/60">{user.email}</p>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            <button
-              type="button"
-              onClick={() => setIsSessionLocked(false)}
-              className="w-full py-3 bg-[#242321] text-[#FAF8F4] text-xs font-body font-semibold uppercase tracking-wider hover:bg-[#713D43] transition-colors cursor-pointer"
-            >
-              Resume Admin Session
-            </button>
-            <button
-              type="button"
-              onClick={signOutAdmin}
-              className="w-full py-2.5 border border-[#DED4C7] text-xs font-body text-[#242321] hover:bg-[#F3EFE8] transition-colors cursor-pointer"
-            >
-              Sign Out Completely
-            </button>
-          </div>
-        </div>
-      </div>
+      <AdminAuthGate
+        onBackToStore={onBackToStore}
+        vaultStatus={vaultStatus}
+        vaultLoading={vaultLoading}
+        vaultUnlocked={vaultUnlocked}
+        onVaultUnlocked={handleVaultUnlocked}
+        onLockVault={handleLockVault}
+      />
     );
   }
 
@@ -399,16 +435,16 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => setIsSessionLocked(true)}
+              onClick={handleLockVault}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#DED4C7] bg-white text-xs font-body font-medium text-[#242321] hover:bg-[#F3EFE8] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Lock</span>
+              <span className="hidden sm:inline">Lock Vault</span>
             </button>
 
             <button
               type="button"
-              onClick={signOutAdmin}
+              onClick={handleFullSignOut}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#242321] text-[#FAF8F4] text-xs font-body font-medium hover:bg-[#713D43] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />

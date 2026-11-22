@@ -279,6 +279,13 @@
           "maxLength": 80,
           "description": "Courier AWB or tracking code assigned by admin."
         },
+        "trackingKey": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 40,
+          "pattern": "^([a-f0-9]{40})?$",
+          "description": "Deterministic SHA-256 hex digest linking this order to its PII-free customer tracking document."
+        },
         "adminNotes": {
           "type": "string",
           "minLength": 0,
@@ -329,6 +336,126 @@
         "updatedAt"
       ]
     },
+    "OrderTracking": {
+      "title": "OrderTracking",
+      "description": "PII-free customer order status projection keyed by a 40-char SHA-256 digest of orderNumber + email. Strictly get-only (no list queries) to prevent enumeration.",
+      "type": "object",
+      "properties": {
+        "trackingKey": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 40,
+          "pattern": "^[a-f0-9]{40}$",
+          "description": "SHA-256 hex digest matching the document ID."
+        },
+        "orderNumber": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 32,
+          "pattern": "^TRC-[A-Z0-9\\-]+$",
+          "description": "Human-readable order reference number."
+        },
+        "customerFirstName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Customer first name only (no email, phone, or street address)."
+        },
+        "city": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Delivery city."
+        },
+        "items": {
+          "type": "array",
+          "description": "Bounded list (1 to 20) of purchased items."
+        },
+        "subtotal": {
+          "type": "number",
+          "description": "Order subtotal in INR."
+        },
+        "discount": {
+          "type": "number",
+          "description": "Coupon discount in INR."
+        },
+        "couponCode": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]*$",
+          "description": "Applied coupon code or empty string."
+        },
+        "shippingFee": {
+          "type": "number",
+          "description": "Express shipping charge in INR."
+        },
+        "codFee": {
+          "type": "number",
+          "description": "Additional COD fee in INR."
+        },
+        "totalPrice": {
+          "type": "number",
+          "description": "Final order total in INR."
+        },
+        "paymentType": {
+          "type": "string",
+          "enum": ["cod", "prepaid"],
+          "description": "Cash on Delivery or Paid Before."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["cod", "upi", "cards"],
+          "description": "Selected payment method."
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["pending_cod", "cod_collected", "paid", "pending_verification", "refunded"],
+          "description": "Current payment reconciliation status."
+        },
+        "fulfillmentStatus": {
+          "type": "string",
+          "enum": ["placed", "confirmed", "packed", "dispatched", "delivered", "cancelled"],
+          "description": "Live fulfillment stage updated by admin."
+        },
+        "trackingNumber": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80,
+          "description": "Courier AWB or tracking code."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp when order was placed."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest fulfillment update."
+        }
+      },
+      "required": [
+        "trackingKey",
+        "orderNumber",
+        "customerFirstName",
+        "city",
+        "items",
+        "subtotal",
+        "discount",
+        "couponCode",
+        "shippingFee",
+        "codFee",
+        "totalPrice",
+        "paymentType",
+        "paymentMethod",
+        "paymentStatus",
+        "fulfillmentStatus",
+        "trackingNumber",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "AdminUser": {
       "title": "AdminUser",
       "description": "Authorized administrator registry record keyed by Firebase Auth UID.",
@@ -346,7 +473,7 @@
           "format": "email",
           "minLength": 5,
           "maxLength": 160,
-          "description": "Verified Google account email address."
+          "description": "Verified account email address."
         },
         "displayName": {
           "type": "string",
@@ -407,6 +534,7 @@
             "coupon_updated",
             "coupon_deleted",
             "order_updated",
+            "order_deleted",
             "admin_added",
             "admin_removed",
             "session_login"
@@ -452,7 +580,11 @@
     },
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/Order" },
-      "description": "Customer orders containing COD/Prepaid status, items, and shipping PII. Strictly admin-readable only."
+      "description": "Customer orders containing COD/Prepaid status, items, and shipping PII. Strictly admin-readable/updatable/deletable only."
+    },
+    "/order_tracking/{trackingKey}": {
+      "schema": { "$ref": "#/entities/OrderTracking" },
+      "description": "PII-free customer order tracking projection keyed by SHA-256(orderNumber|email). Get-only (no list) for customers; admin-updatable/deletable."
     },
     "/admins/{adminUid}": {
       "schema": { "$ref": "#/entities/AdminUser" },

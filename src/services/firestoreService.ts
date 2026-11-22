@@ -5,12 +5,16 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
   DEFAULT_COUPONS,
   DEFAULT_STORE_PRICING,
+  deriveOrderTrackingKey,
+  extractFirstName,
   normalizeCouponCode,
+  TRACKING_KEY_REGEX,
   validateCheckoutForm,
   validateCouponInput,
   validatePricingConfigInput,
@@ -75,7 +79,7 @@ export async function createCustomerOrder(params: {
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paymentReference: string;
-}): Promise<void> {
+}): Promise<{ orderNumber: string; trackingKey: string }> {
   const validationError = validateCheckoutForm({
     name: params.customerName,
     email: params.customerEmail,
@@ -115,36 +119,71 @@ export async function createCustomerOrder(params: {
         ? 'paid'
         : 'pending_verification';
 
-  const payload = {
+  const normalizedEmail = params.customerEmail.trim().toLowerCase().slice(0, 160);
+  const normalizedName = params.customerName.trim().slice(0, 120);
+  const normalizedCity = params.city.trim().slice(0, 80);
+  const normalizedCoupon = normalizeCouponCode(params.couponCode);
+  const resolvedPaymentMethod: PaymentMethod =
+    params.paymentType === 'cod' ? 'cod' : params.paymentMethod;
+  const trackingKey = await deriveOrderTrackingKey(params.orderNumber, normalizedEmail);
+
+  const orderPayload = {
     orderNumber: params.orderNumber,
-    customerName: params.customerName.trim().slice(0, 120),
-    customerEmail: params.customerEmail.trim().toLowerCase().slice(0, 160),
+    customerName: normalizedName,
+    customerEmail: normalizedEmail,
     customerPhone: params.customerPhone.trim().slice(0, 24),
     shippingAddress: params.shippingAddress.trim().slice(0, 300),
-    city: params.city.trim().slice(0, 80),
+    city: normalizedCity,
     pincode: params.pincode.trim().slice(0, 6),
     items: sanitizedItems,
     subtotal,
     discount,
-    couponCode: normalizeCouponCode(params.couponCode),
+    couponCode: normalizedCoupon,
     shippingFee,
     codFee,
     totalPrice,
     paymentType: params.paymentType,
-    paymentMethod: params.paymentType === 'cod' ? 'cod' : params.paymentMethod,
+    paymentMethod: resolvedPaymentMethod,
     paymentStatus,
     paymentReference: params.paymentReference.trim().slice(0, 80),
     fulfillmentStatus: 'placed' as FulfillmentStatus,
     trackingNumber: '',
+    trackingKey,
     adminNotes: '',
     updatedBy: '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
+  // PII-free projection for customer self-service live tracking
+  const trackingPayload = {
+    trackingKey,
+    orderNumber: params.orderNumber,
+    customerFirstName: extractFirstName(normalizedName),
+    city: normalizedCity,
+    items: sanitizedItems,
+    subtotal,
+    discount,
+    couponCode: normalizedCoupon,
+    shippingFee,
+    codFee,
+    totalPrice,
+    paymentType: params.paymentType,
+    paymentMethod: resolvedPaymentMethod,
+    paymentStatus,
+    fulfillmentStatus: 'placed' as FulfillmentStatus,
+    trackingNumber: '',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
   const path = `orders/${params.orderNumber}`;
   try {
-    await setDoc(doc(db, 'orders', params.orderNumber), payload);
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'orders', params.orderNumber), orderPayload);
+    batch.set(doc(db, 'order_tracking', trackingKey), trackingPayload);
+    await batch.commit();
+    return { orderNumber: params.orderNumber, trackingKey };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -317,6 +356,20 @@ export async function deleteCoupon(code: string): Promise<void> {
   }
 }
 
+async function resolveExistingTrackingKey(order: OrderRecord): Promise<string | null> {
+  const candidate =
+    order.trackingKey && TRACKING_KEY_REGEX.test(order.trackingKey)
+      ? order.trackingKey
+      : await deriveOrderTrackingKey(order.orderNumber, order.customerEmail);
+
+  try {
+    const snap = await getDoc(doc(db, 'order_tracking', candidate));
+    return snap.exists() ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function updateOrderRecord(
   order: OrderRecord,
   updates: {
@@ -329,23 +382,57 @@ export async function updateOrderRecord(
   actorEmail: string
 ): Promise<void> {
   const path = `orders/${order.orderNumber}`;
+  const cleanTrackingNumber = updates.trackingNumber.trim().slice(0, 80);
   try {
-    await updateDoc(doc(db, 'orders', order.orderNumber), {
+    const existingTrackingKey = await resolveExistingTrackingKey(order);
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'orders', order.orderNumber), {
       paymentStatus: updates.paymentStatus,
       paymentReference: updates.paymentReference.trim().slice(0, 80),
       fulfillmentStatus: updates.fulfillmentStatus,
-      trackingNumber: updates.trackingNumber.trim().slice(0, 80),
+      trackingNumber: cleanTrackingNumber,
       adminNotes: updates.adminNotes.trim().slice(0, 500),
       updatedBy: actorEmail,
       updatedAt: serverTimestamp(),
     });
+
+    if (existingTrackingKey) {
+      batch.update(doc(db, 'order_tracking', existingTrackingKey), {
+        paymentStatus: updates.paymentStatus,
+        fulfillmentStatus: updates.fulfillmentStatus,
+        trackingNumber: cleanTrackingNumber,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
     await logAdminAudit(
       'order_updated',
       order.orderNumber,
-      `Updated ${order.orderNumber}: fulfillment=${updates.fulfillmentStatus}, payment=${updates.paymentStatus}${updates.trackingNumber ? `, tracking=${updates.trackingNumber}` : ''}`
+      `Updated ${order.orderNumber}: fulfillment=${updates.fulfillmentStatus}, payment=${updates.paymentStatus}${cleanTrackingNumber ? `, tracking=${cleanTrackingNumber}` : ''}`
     );
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteOrderRecord(order: OrderRecord): Promise<void> {
+  const path = `orders/${order.orderNumber}`;
+  try {
+    const existingTrackingKey = await resolveExistingTrackingKey(order);
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'orders', order.orderNumber));
+    if (existingTrackingKey) {
+      batch.delete(doc(db, 'order_tracking', existingTrackingKey));
+    }
+    await batch.commit();
+    await logAdminAudit(
+      'order_deleted',
+      order.orderNumber,
+      `Permanently deleted order ${order.orderNumber} (${order.customerName}, ${order.paymentType.toUpperCase()}, ₹${order.totalPrice})`
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 

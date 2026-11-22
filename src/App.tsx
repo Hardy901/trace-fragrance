@@ -21,8 +21,15 @@ import { CartDrawer } from './components/cart/CartDrawer';
 import { SearchModal } from './components/modals/SearchModal';
 import { ProductQuickViewModal } from './components/modals/ProductQuickViewModal';
 import { CheckoutModal } from './components/modals/CheckoutModal';
+import { MyOrdersModal } from './components/modals/MyOrdersModal';
 import { MarqueeTicker } from './components/brand/MarqueeTicker';
 import { AdminConsole } from './components/admin/AdminConsole';
+import {
+  readSavedCustomerOrders,
+  removeSavedCustomerOrderRef,
+  saveCustomerOrderRef,
+  type SavedCustomerOrderRef,
+} from './utils/storeLogic';
 import type { FragranceProduct } from './data/products';
 
 function isAdminPath(): boolean {
@@ -32,8 +39,20 @@ function isAdminPath(): boolean {
 
 export const AppContent: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [savedOrders, setSavedOrders] = useState<SavedCustomerOrderRef[]>(() =>
+    readSavedCustomerOrders()
+  );
   const [selectedProduct, setSelectedProduct] = useState<FragranceProduct | null>(null);
   const [showAdmin, setShowAdmin] = useState<boolean>(() => isAdminPath());
+
+  const handleAddSavedOrder = (ref: SavedCustomerOrderRef) => {
+    setSavedOrders(saveCustomerOrderRef(ref));
+  };
+
+  const handleRemoveSavedOrder = (trackingKey: string) => {
+    setSavedOrders(removeSavedCustomerOrderRef(trackingKey));
+  };
 
   useEffect(() => {
     const handlePopState = () => {
@@ -65,7 +84,11 @@ export const AppContent: React.FC = () => {
       <LoadingScreen />
 
       {/* 1. Navigation */}
-      <Navbar onOpenSearch={() => setIsSearchOpen(true)} />
+      <Navbar
+        onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenOrders={() => setIsOrdersOpen(true)}
+        savedOrdersCount={savedOrders.length}
+      />
 
       <main>
         {/* 2. Hero Experience */}
@@ -112,7 +135,10 @@ export const AppContent: React.FC = () => {
       </main>
 
       {/* 13. Footer */}
-      <Footer onOpenAdmin={navigateToAdmin} />
+      <Footer
+        onOpenAdmin={navigateToAdmin}
+        onOpenOrders={() => setIsOrdersOpen(true)}
+      />
 
       {/* Overlays & Drawers */}
       <CartDrawer />
@@ -125,7 +151,17 @@ export const AppContent: React.FC = () => {
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
       />
-      <CheckoutModal />
+      <CheckoutModal
+        onOrderPlaced={handleAddSavedOrder}
+        onOpenOrders={() => setIsOrdersOpen(true)}
+      />
+      <MyOrdersModal
+        isOpen={isOrdersOpen}
+        onClose={() => setIsOrdersOpen(false)}
+        savedOrders={savedOrders}
+        onAddSavedOrder={handleAddSavedOrder}
+        onRemoveSavedOrder={handleRemoveSavedOrder}
+      />
     </div>
   );
 };

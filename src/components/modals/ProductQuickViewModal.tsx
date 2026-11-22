@@ -22,7 +22,10 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
 
   if (!product) return null;
 
+  const isOutOfStock = !product.inStock || !discoverySet.inStock;
+
   const handleAddToCart = () => {
+    if (isOutOfStock) return;
     addItem(
       {
         id: discoverySet.id,
@@ -63,11 +66,18 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
 
         {/* Visual Column */}
         <div className="relative bg-[#151413] flex items-center justify-center p-8 border-b md:border-b-0 md:border-r border-white/15 min-h-[380px]">
+          {isOutOfStock && (
+            <div className="absolute top-4 left-4 z-20 px-3 py-1 bg-[#991B1B] text-white font-mono text-[10px] font-bold uppercase tracking-[0.2em] border border-white/30">
+              OUT OF STOCK
+            </div>
+          )}
           <div className="relative w-full max-w-[240px] h-[340px] flex items-center justify-center">
             <img
               src={product.image}
               alt={product.name}
-              className="h-full w-auto object-contain drop-shadow-2xl"
+              className={`h-full w-auto object-contain drop-shadow-2xl ${
+                isOutOfStock ? 'grayscale opacity-70' : ''
+              }`}
             />
             <div className="absolute -bottom-3 -right-3 bg-[#242321] text-[#FAF8F4] px-3 py-1 font-mono text-[10px] uppercase tracking-widest flex items-center gap-1.5 shadow-md border border-white/20">
               <StarEmblem size={12} color="#DED4C7" />
@@ -79,7 +89,7 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
         {/* Info Column */}
         <div className="p-6 md:p-8 flex flex-col justify-between max-h-[85vh] overflow-y-auto space-y-6">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="font-mono text-xs text-[#713D43] font-medium tracking-widest uppercase">
                 NO. {product.number}
               </span>
@@ -87,6 +97,11 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
               <span className="text-xs font-mono uppercase tracking-wider text-[#242321]/70">
                 {product.category}
               </span>
+              {isOutOfStock && (
+                <span className="px-2 py-0.5 bg-[#991B1B] text-white text-[10px] font-mono font-bold uppercase tracking-widest">
+                  OUT OF STOCK
+                </span>
+              )}
             </div>
 
             <h2 id="quickview-title" className="font-editorial text-3xl md:text-4xl text-[#242321] tracking-wide mb-1">
@@ -166,11 +181,18 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
             </p>
 
             <button
+              type="button"
               onClick={handleAddToCart}
-              disabled={added}
-              className="w-full py-3.5 px-6 bg-[#242321] text-[#FAF8F4] text-xs font-body uppercase tracking-[0.2em] hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              disabled={added || isOutOfStock}
+              className={`w-full py-3.5 px-6 text-xs font-body uppercase tracking-[0.2em] transition-colors flex items-center justify-center gap-2 shadow-md ${
+                isOutOfStock
+                  ? 'bg-[#B7A99A] text-[#FAF8F4] cursor-not-allowed'
+                  : 'bg-[#242321] text-[#FAF8F4] hover:bg-[#713D43] cursor-pointer'
+              }`}
             >
-              {added ? (
+              {isOutOfStock ? (
+                <span>OUT OF STOCK</span>
+              ) : added ? (
                 <>
                   <Check className="w-4 h-4 text-[#DED4C7]" />
                   <span>Discovery Set Added to Bag</span>

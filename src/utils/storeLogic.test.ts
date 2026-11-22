@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_COUPONS,
   DEFAULT_STORE_PRICING,
+  TRACKING_KEY_REGEX,
   calculateCartTotals,
   calculateCouponDiscount,
   computeDiscountedPrice,
+  deriveOrderTrackingKey,
+  extractFirstName,
   formatINR,
   normalizeCouponCode,
+  normalizeOrderNumber,
   ordersToCsv,
   summarizeOrderAnalytics,
   validateCheckoutForm,
@@ -316,3 +320,17 @@ test('ordersToCsv properly escapes commas and quotes in customer fields', () => 
   assert.ok(csv.includes('TRC-100001-AAA'));
   assert.ok(csv.includes('COD'));
 });
+
+test('deriveOrderTrackingKey produces deterministic 40-char hex key insensitive to casing/whitespace', async () => {
+  const keyA = await deriveOrderTrackingKey('trc-123456-abc', '  Aarav@Example.COM ');
+  const keyB = await deriveOrderTrackingKey('TRC-123456-ABC', 'aarav@example.com');
+  const keyOther = await deriveOrderTrackingKey('TRC-123456-ABC', 'other@example.com');
+
+  assert.equal(keyA, keyB);
+  assert.notEqual(keyA, keyOther);
+  assert.match(keyA, TRACKING_KEY_REGEX);
+  assert.equal(normalizeOrderNumber(' trc-998877-xyz! '), 'TRC-998877-XYZ');
+  assert.equal(extractFirstName('  Aarav Sharma '), 'Aarav');
+  assert.equal(extractFirstName('   '), 'Guest');
+});
+

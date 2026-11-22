@@ -134,6 +134,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   <div className="flex items-center gap-1.5 text-xs text-[#713D43] font-medium tracking-widest uppercase">
                     <Sparkles className="w-3 h-3" />
                     <span>Curated Set</span>
+                    {!discoverySet.inStock && (
+                      <span className="ml-1 px-2 py-0.5 bg-[#991B1B] text-white text-[10px] font-mono font-bold">
+                        OUT OF STOCK
+                      </span>
+                    )}
                   </div>
                   <h3 className="font-editorial text-lg text-[#242321] tracking-wide">
                     {discoverySet.name}
@@ -144,7 +149,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 </div>
               </div>
               <button
+                type="button"
+                disabled={!discoverySet.inStock}
                 onClick={() => {
+                  if (!discoverySet.inStock) return;
                   addItem({
                     id: discoverySet.id,
                     name: discoverySet.name,
@@ -155,16 +163,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   });
                   onClose();
                 }}
-                className="px-3.5 py-2 text-xs uppercase tracking-widest font-body bg-[#242321] text-[#FAF8F4] hover:bg-[#713D43] transition-colors shrink-0"
+                className={`px-3.5 py-2 text-xs uppercase tracking-widest font-body transition-colors shrink-0 ${
+                  !discoverySet.inStock
+                    ? 'bg-[#B7A99A] text-[#FAF8F4] cursor-not-allowed'
+                    : 'bg-[#242321] text-[#FAF8F4] hover:bg-[#713D43] cursor-pointer'
+                }`}
               >
-                Add to Cart
+                {discoverySet.inStock ? 'Add to Cart' : 'Out of Stock'}
               </button>
             </div>
           )}
 
           {/* Fragrances */}
           <div className="space-y-3">
-            {matchedFragrances.map(fragrance => (
+            {matchedFragrances.map(fragrance => {
+              const isOutOfStock = !fragrance.inStock || !discoverySet.inStock;
+              return (
               <div
                 key={fragrance.id}
                 className="p-3 bg-white border border-[#DED4C7]/80 flex items-center justify-between gap-4 group hover:border-[#B7A99A] transition-colors"
@@ -181,12 +195,21 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   <img
                     src={fragrance.image}
                     alt={fragrance.name}
-                    className="w-12 h-16 object-cover bg-[#F3EFE8] border border-[#DED4C7]"
+                    className={`w-12 h-16 object-cover bg-[#F3EFE8] border border-[#DED4C7] ${
+                      isOutOfStock ? 'grayscale opacity-70' : ''
+                    }`}
                   />
                   <div>
-                    <span className="text-[11px] font-mono tracking-widest text-[#B7A99A] uppercase">
-                      {fragrance.number} • {fragrance.category}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-mono tracking-widest text-[#B7A99A] uppercase">
+                        {fragrance.number} • {fragrance.category}
+                      </span>
+                      {isOutOfStock && (
+                        <span className="px-1.5 py-0.5 bg-[#991B1B] text-white text-[9px] font-mono font-bold uppercase tracking-wider">
+                          OUT OF STOCK
+                        </span>
+                      )}
+                    </div>
                     <h3 className="font-editorial text-lg text-[#242321] tracking-wider group-hover:text-[#713D43] transition-colors">
                       {fragrance.name}{' '}
                       <span className="text-xs font-sans text-[#242321]/60">
@@ -201,10 +224,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="font-mono text-xs text-[#713D43] font-bold">
-                    In Set {discoverySet.formattedPrice}
+                    {isOutOfStock ? 'Out of Stock' : `In Set ${discoverySet.formattedPrice}`}
                   </span>
                   <button
+                    type="button"
+                    disabled={isOutOfStock}
                     onClick={() => {
+                      if (isOutOfStock) return;
                       addItem({
                         id: discoverySet.id,
                         name: discoverySet.name,
@@ -215,14 +241,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       });
                       onClose();
                     }}
-                    className="p-2 bg-[#F3EFE8] hover:bg-[#242321] hover:text-[#FAF8F4] transition-colors"
-                    aria-label="Add Discovery Set to cart"
+                    className={`p-2 transition-colors ${
+                      isOutOfStock
+                        ? 'bg-[#F3EFE8] text-[#B7A99A] cursor-not-allowed'
+                        : 'bg-[#F3EFE8] hover:bg-[#242321] hover:text-[#FAF8F4] cursor-pointer'
+                    }`}
+                    aria-label={isOutOfStock ? `${fragrance.name} is out of stock` : 'Add Discovery Set to cart'}
                   >
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {matchedFragrances.length === 0 && !matchDiscovery && (
               <div className="py-12 text-center text-[#242321]/60">

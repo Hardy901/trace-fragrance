@@ -92,9 +92,17 @@ export const DiscoverySetSection: React.FC = () => {
                   transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                   src={imagesMap[activeImage].src}
                   alt={imagesMap[activeImage].label}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-104"
+                  className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-104 ${
+                    !discoverySet.inStock ? 'grayscale opacity-75' : ''
+                  }`}
                 />
               </AnimatePresence>
+
+              {!discoverySet.inStock && (
+                <div className="absolute top-4 left-4 bg-[#991B1B] text-white px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] border border-white/30 shadow-lg">
+                  OUT OF STOCK
+                </div>
+              )}
 
               {/* Tag overlay */}
               <div className="absolute bottom-4 left-4 bg-[#242321]/85 backdrop-blur-xs text-[#FAF8F4] px-3 py-1 font-mono text-[10px] uppercase tracking-widest border border-white/10">
@@ -154,10 +162,17 @@ export const DiscoverySetSection: React.FC = () => {
                   <span className="font-mono text-3xl sm:text-4xl font-bold text-[#242321]">
                     {discoverySet.formattedPrice}
                   </span>
-                  {featuredCoupon && discoveryDiscountedPrice !== null && (
-                    <span className="px-2.5 py-0.5 bg-[#713D43]/15 border border-[#713D43]/40 text-[#713D43] text-xs font-mono font-bold">
-                      {formatINR(discoveryDiscountedPrice)} WITH CODE &apos;{featuredCoupon.code}&apos;
+                  {!discoverySet.inStock ? (
+                    <span className="px-2.5 py-0.5 bg-[#991B1B] text-white text-xs font-mono font-bold uppercase tracking-widest">
+                      OUT OF STOCK
                     </span>
+                  ) : (
+                    featuredCoupon &&
+                    discoveryDiscountedPrice !== null && (
+                      <span className="px-2.5 py-0.5 bg-[#713D43]/15 border border-[#713D43]/40 text-[#713D43] text-xs font-mono font-bold">
+                        {formatINR(discoveryDiscountedPrice)} WITH CODE &apos;{featuredCoupon.code}&apos;
+                      </span>
+                    )
                   )}
                 </div>
                 {featuredCoupon && (
@@ -208,7 +223,7 @@ export const DiscoverySetSection: React.FC = () => {
                 className="w-full py-4 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.25em] uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 shadow-lg cursor-pointer group disabled:opacity-60"
               >
                 {!discoverySet.inStock ? (
-                  <span>Currently Sold Out</span>
+                  <span>OUT OF STOCK</span>
                 ) : added ? (
                   <>
                     <Check className="w-4 h-4 text-[#DED4C7]" />

@@ -10,6 +10,7 @@ import {
   Banknote,
   AlertCircle,
   Save,
+  Trash2,
 } from 'lucide-react';
 import {
   formatINR,
@@ -20,7 +21,7 @@ import {
   type OrderRecord,
   type PaymentStatus,
 } from '../../utils/storeLogic';
-import { updateOrderRecord } from '../../services/firestoreService';
+import { deleteOrderRecord, updateOrderRecord } from '../../services/firestoreService';
 
 interface OrdersManagerProps {
   orders: OrderRecord[];
@@ -88,6 +89,9 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
   const [editTracking, setEditTracking] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [ledgerNotice, setLedgerNotice] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
@@ -120,7 +124,28 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
     setEditPaymentRef(order.paymentReference || '');
     setEditTracking(order.trackingNumber || '');
     setEditNotes(order.adminNotes || '');
+    setConfirmingDelete(false);
     setFeedback(null);
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!selectedOrder) return;
+    setDeleting(true);
+    setFeedback(null);
+    const targetNumber = selectedOrder.orderNumber;
+    try {
+      await deleteOrderRecord(selectedOrder);
+      setSelectedOrder(null);
+      setConfirmingDelete(false);
+      setLedgerNotice(`Order ${targetNumber} was permanently deleted and recorded in the audit log.`);
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to delete order.',
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSaveOrder = async (e: React.FormEvent) => {
@@ -219,6 +244,23 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
 
   return (
     <div className="space-y-6">
+      {ledgerNotice && (
+        <div className="p-3.5 bg-[#F0FDF4] border border-[#BBF7D0] text-xs text-[#15803D] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{ledgerNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLedgerNotice(null)}
+            aria-label="Dismiss notification"
+            className="p-1 text-[#15803D]/70 hover:text-[#15803D] cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* KPI Strip — 4-column flat grid with hairline dividers */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 bg-white border border-[#DED4C7] divide-y sm:divide-y-0 sm:divide-x divide-[#DED4C7]">
         <div className="p-5 space-y-1">
@@ -720,13 +762,63 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
 
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || deleting}
                   className="w-full py-3 px-4 bg-[#242321] text-[#FAF8F4] text-xs font-body font-semibold tracking-wider uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
                   <span>{saving ? 'Saving to Firestore...' : 'Save Order Update'}</span>
                 </button>
               </form>
+
+              {/* Danger Zone: Permanent Order Deletion */}
+              <div className="bg-[#FDF4F5] border border-[#B91C1C]/30 p-4 space-y-3 text-xs font-body">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-[#B91C1C]">Danger Zone — Delete Order</h3>
+                    <p className="text-[11px] text-[#242321]/70 mt-0.5">
+                      Permanently remove {selectedOrder.orderNumber} from the orders ledger and customer tracker. Logged to audit trail.
+                    </p>
+                  </div>
+                </div>
+
+                {!confirmingDelete ? (
+                  <button
+                    type="button"
+                    disabled={saving || deleting}
+                    onClick={() => setConfirmingDelete(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#B91C1C] bg-white text-[#B91C1C] text-xs font-medium hover:bg-[#B91C1C] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Order</span>
+                  </button>
+                ) : (
+                  <div className="space-y-2.5 pt-1 border-t border-[#B91C1C]/20">
+                    <p className="text-xs font-medium text-[#B91C1C]">
+                      Are you sure you want to permanently delete{' '}
+                      <span className="font-mono">{selectedOrder.orderNumber}</span>? This cannot be undone.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={handleDeleteOrder}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#B91C1C] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#991B1B] transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{deleting ? 'Deleting Order...' : 'Confirm Permanent Delete'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => setConfirmingDelete(false)}
+                        className="px-3.5 py-2 border border-[#DED4C7] bg-white text-xs text-[#242321] hover:bg-[#F3EFE8] transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

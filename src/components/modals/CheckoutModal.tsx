@@ -6,12 +6,22 @@ import { createCustomerOrder } from '../../services/firestoreService';
 import {
   formatINR,
   generateOrderNumber,
+  saveCustomerOrderRef,
   type PaymentMethod,
   type PaymentType,
+  type SavedCustomerOrderRef,
 } from '../../utils/storeLogic';
 import { TraceLogo } from '../brand/TraceLogo';
 
-export const CheckoutModal: React.FC = () => {
+interface CheckoutModalProps {
+  onOrderPlaced?: (ref: SavedCustomerOrderRef) => void;
+  onOpenOrders?: () => void;
+}
+
+export const CheckoutModal: React.FC<CheckoutModalProps> = ({
+  onOrderPlaced,
+  onOpenOrders,
+}) => {
   const {
     isCheckoutOpen,
     closeCheckout,
@@ -78,7 +88,7 @@ export const CheckoutModal: React.FC = () => {
     const orderNumber = generateOrderNumber();
 
     try {
-      await createCustomerOrder({
+      const created = await createCustomerOrder({
         orderNumber,
         customerName: formData.name,
         customerEmail: formData.email,
@@ -104,6 +114,14 @@ export const CheckoutModal: React.FC = () => {
         paymentMethod: formData.paymentMethod,
         paymentReference: formData.paymentReference,
       });
+
+      const savedRef: SavedCustomerOrderRef = {
+        orderNumber: created.orderNumber,
+        trackingKey: created.trackingKey,
+        placedAt: new Date().toISOString(),
+      };
+      saveCustomerOrderRef(savedRef);
+      onOrderPlaced?.(savedRef);
 
       setConfirmedOrder({
         orderNumber,
@@ -528,13 +546,27 @@ export const CheckoutModal: React.FC = () => {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleFinish}
-              className="px-8 py-3.5 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.25em] uppercase hover:bg-[#713D43] transition-colors cursor-pointer"
-            >
-              Continue Exploring TRACE
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              {onOpenOrders && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleFinish();
+                    onOpenOrders();
+                  }}
+                  className="w-full sm:w-auto px-8 py-3.5 bg-[#713D43] text-[#FAF8F4] font-body text-xs tracking-[0.22em] uppercase hover:bg-[#242321] transition-colors cursor-pointer"
+                >
+                  Track My Order Live
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleFinish}
+                className="w-full sm:w-auto px-8 py-3.5 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.22em] uppercase hover:bg-[#713D43] transition-colors cursor-pointer"
+              >
+                Continue Exploring TRACE
+              </button>
+            </div>
           </div>
         )}
       </div>

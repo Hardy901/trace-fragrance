@@ -49,7 +49,10 @@ export const IndividualFragranceStory: React.FC = () => {
 
   const currentTheme = themes[activeIdx];
 
+  const isOutOfStock = !fragrance.inStock || !discoverySet.inStock;
+
   const handleAddDiscoverySet = () => {
+    if (isOutOfStock) return;
     addItem({
       id: discoverySet.id,
       name: discoverySet.name,
@@ -132,10 +135,14 @@ export const IndividualFragranceStory: React.FC = () => {
                 <span className="font-mono text-xs uppercase tracking-[0.2em] font-medium">
                   {f.name.replace(' ELIXIR', '')}
                 </span>
-                <span className={`text-[10px] font-mono uppercase tracking-wider hidden md:inline opacity-70 ${
-                  isActive ? 'text-[#121110]' : 'text-white/50'
+                <span className={`text-[10px] font-mono uppercase tracking-wider hidden md:inline opacity-80 ${
+                  !f.inStock
+                    ? 'text-[#FCA5A5] font-bold'
+                    : isActive
+                      ? 'text-[#121110]'
+                      : 'text-white/50'
                 }`}>
-                  [30% EXTRAIT]
+                  {!f.inStock ? '[OUT OF STOCK]' : '[30% EXTRAIT]'}
                 </span>
               </motion.button>
             );
@@ -170,11 +177,19 @@ export const IndividualFragranceStory: React.FC = () => {
                   <motion.img
                     src={fragrance.panelImage}
                     alt={`TRACE 0${activeIdx + 1} ${fragrance.name} in elemental sanctuary`}
-                    className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-106 brightness-100 contrast-100"
+                    className={`w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-106 brightness-100 contrast-100 ${
+                      isOutOfStock ? 'grayscale opacity-70' : ''
+                    }`}
                     initial={{ scale: 0.98, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.4 }}
                   />
+
+                  {isOutOfStock && (
+                    <div className="absolute top-3 right-3 z-20 px-2.5 py-1 bg-[#991B1B] text-white font-mono text-[10px] font-bold uppercase tracking-[0.2em] border border-white/30 shadow-lg">
+                      OUT OF STOCK
+                    </div>
+                  )}
 
                   {/* Clean Technical Tag at bottom */}
                   <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center text-[10px] font-mono text-white/90 bg-[#121110]/95 backdrop-blur-md px-3 py-1.5 border border-white/15 z-20">
@@ -202,6 +217,11 @@ export const IndividualFragranceStory: React.FC = () => {
                     <span className="px-2.5 py-0.5 border border-[#713D43]/40 bg-[#713D43]/20 text-xs font-mono uppercase tracking-widest text-[#FCEEF0] font-bold">
                       18–24 HOURS
                     </span>
+                    {isOutOfStock && (
+                      <span className="px-2.5 py-0.5 border border-white/30 bg-[#991B1B] text-xs font-mono uppercase tracking-widest text-white font-bold">
+                        OUT OF STOCK
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="font-editorial text-4xl sm:text-5xl lg:text-6xl tracking-tight text-white font-light">
@@ -328,12 +348,18 @@ export const IndividualFragranceStory: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <motion.button
                       onClick={handleAddDiscoverySet}
-                      disabled={added}
-                      whileHover={{ scale: 1.03, y: -2 }}
-                      whileTap={{ scale: 0.97 }}
-                      className="flex-1 sm:flex-initial px-8 py-4 bg-white text-[#121110] font-mono text-xs uppercase tracking-[0.25em] font-bold hover:bg-[#DED4C7] transition-all flex items-center justify-center gap-2.5 shadow-2xl cursor-pointer"
+                      disabled={added || isOutOfStock}
+                      whileHover={isOutOfStock ? undefined : { scale: 1.03, y: -2 }}
+                      whileTap={isOutOfStock ? undefined : { scale: 0.97 }}
+                      className={`flex-1 sm:flex-initial px-8 py-4 font-mono text-xs uppercase tracking-[0.25em] font-bold transition-all flex items-center justify-center gap-2.5 shadow-2xl ${
+                        isOutOfStock
+                          ? 'bg-[#3A3835] text-white/75 border border-white/20 cursor-not-allowed'
+                          : 'bg-white text-[#121110] hover:bg-[#DED4C7] cursor-pointer'
+                      }`}
                     >
-                      {added ? (
+                      {isOutOfStock ? (
+                        <span>OUT OF STOCK</span>
+                      ) : added ? (
                         <>
                           <Check className="w-4 h-4 text-[#713D43]" />
                           <span>DISCOVERY SET ADDED</span>

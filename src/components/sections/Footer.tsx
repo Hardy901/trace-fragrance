@@ -6,9 +6,10 @@ import { useStoreConfig } from '../../context/StoreConfigContext';
 
 interface FooterProps {
   onOpenAdmin?: () => void;
+  onOpenOrders?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenAdmin, onOpenOrders }) => {
   const { discoverySet } = useStoreConfig();
   const scrollTo = (id: string) => {
     document.querySelector(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -157,6 +158,17 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
                 <span className="text-[#B7A99A] block text-[10px] uppercase font-mono">Domestic Delivery:</span>
                 <span className="text-xs">Express shipping across all PIN codes in India</span>
               </li>
+              {onOpenOrders && (
+                <li className="pt-2">
+                  <button
+                    type="button"
+                    onClick={onOpenOrders}
+                    className="px-3.5 py-2 border border-[#DED4C7]/40 text-[11px] font-mono uppercase tracking-widest text-[#DED4C7] hover:bg-[#713D43] hover:border-[#713D43] hover:text-white transition-colors cursor-pointer"
+                  >
+                    Track My Orders
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

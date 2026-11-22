@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   onAuthStateChanged,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   type User,
@@ -54,6 +56,9 @@ interface StoreConfigContextType {
   adminRole: AdminRole | null;
   authError: string | null;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmailPassword: (email: string, password: string) => Promise<void>;
+  sendAdminVerificationEmail: () => Promise<void>;
+  refreshAdminAuthStatus: () => Promise<void>;
   signOutAdmin: () => Promise<void>;
 }
 
@@ -139,65 +144,67 @@ export const StoreConfigProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, []);
 
+  const evaluateAdminIdentity = async (currentUser: User | null): Promise<void> => {
+    setUser(currentUser);
+    setAuthError(null);
+
+    if (!currentUser) {
+      setIsAdmin(false);
+      setIsOwnerAdmin(false);
+      setAdminRole(null);
+      setAuthReady(true);
+      return;
+    }
+
+    const verifiedOwner =
+      Boolean(currentUser.emailVerified) &&
+      currentUser.email?.toLowerCase() === OWNER_ADMIN_EMAIL.toLowerCase();
+
+    if (verifiedOwner) {
+      setIsOwnerAdmin(true);
+      setIsAdmin(true);
+      setAdminRole('owner');
+      setAuthReady(true);
+      return;
+    }
+
+    if (!currentUser.emailVerified) {
+      setIsOwnerAdmin(false);
+      setIsAdmin(false);
+      setAdminRole(null);
+      setAuthError('Your admin account email must be verified before Firestore grants access.');
+      setAuthReady(true);
+      return;
+    }
+
+    try {
+      const adminDoc = await getDoc(doc(db, 'admins', currentUser.uid));
+      if (adminDoc.exists()) {
+        const data = adminDoc.data() as { role?: AdminRole };
+        setIsOwnerAdmin(false);
+        setIsAdmin(true);
+        setAdminRole(data.role === 'owner' ? 'owner' : 'manager');
+      } else {
+        setIsOwnerAdmin(false);
+        setIsAdmin(false);
+        setAdminRole(null);
+      }
+    } catch (err) {
+      setIsOwnerAdmin(false);
+      setIsAdmin(false);
+      setAdminRole(null);
+      console.error('Admin verification lookup failed:', err);
+    } finally {
+      setAuthReady(true);
+    }
+  };
+
   // 3. Firebase Auth & RBAC verification listener
   useEffect(() => {
     let active = true;
     const unsubAuth = onAuthStateChanged(auth, async currentUser => {
       if (!active) return;
-      setUser(currentUser);
-      setAuthError(null);
-
-      if (!currentUser) {
-        setIsAdmin(false);
-        setIsOwnerAdmin(false);
-        setAdminRole(null);
-        setAuthReady(true);
-        return;
-      }
-
-      const verifiedOwner =
-        Boolean(currentUser.emailVerified) &&
-        currentUser.email?.toLowerCase() === OWNER_ADMIN_EMAIL.toLowerCase();
-
-      if (verifiedOwner) {
-        setIsOwnerAdmin(true);
-        setIsAdmin(true);
-        setAdminRole('owner');
-        setAuthReady(true);
-        return;
-      }
-
-      if (!currentUser.emailVerified) {
-        setIsOwnerAdmin(false);
-        setIsAdmin(false);
-        setAdminRole(null);
-        setAuthError('Your Google account email must be verified to access the admin console.');
-        setAuthReady(true);
-        return;
-      }
-
-      try {
-        const adminDoc = await getDoc(doc(db, 'admins', currentUser.uid));
-        if (!active) return;
-        if (adminDoc.exists()) {
-          const data = adminDoc.data() as { role?: AdminRole };
-          setIsOwnerAdmin(false);
-          setIsAdmin(true);
-          setAdminRole(data.role === 'owner' ? 'owner' : 'manager');
-        } else {
-          setIsOwnerAdmin(false);
-          setIsAdmin(false);
-          setAdminRole(null);
-        }
-      } catch (err) {
-        if (!active) return;
-        setIsOwnerAdmin(false);
-        setIsAdmin(false);
-        setAdminRole(null);
-        console.error('Admin verification lookup failed:', err);
-      } finally {
-        if (active) setAuthReady(true);
-      }
+      await evaluateAdminIdentity(currentUser);
     });
 
     return () => {
@@ -217,6 +224,52 @@ export const StoreConfigProvider: React.FC<{ children: React.ReactNode }> = ({ c
       } else {
         setAuthError(msg);
       }
+    }
+  };
+
+  const signInWithEmailPassword = async (email: string, password: string) => {
+    setAuthError(null);
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      await evaluateAdminIdentity(credential.user);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unable to sign in with email and password.';
+      if (msg.includes('auth/invalid-credential') || msg.includes('auth/wrong-password') || msg.includes('auth/user-not-found')) {
+        setAuthError('Invalid email or password. Ensure this admin account exists in Firebase Authentication.');
+      } else if (msg.includes('auth/operation-not-allowed')) {
+        setAuthError('Email/Password sign-in is not yet enabled in Firebase Authentication → Sign-in method.');
+      } else if (msg.includes('auth/too-many-requests')) {
+        setAuthError('Too many failed sign-in attempts. Please wait a few minutes and try again.');
+      } else {
+        setAuthError(msg);
+      }
+    }
+  };
+
+  const sendAdminVerificationEmail = async () => {
+    setAuthError(null);
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    try {
+      await sendEmailVerification(currentUser);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unable to send verification email.';
+      setAuthError(msg);
+      throw error;
+    }
+  };
+
+  const refreshAdminAuthStatus = async () => {
+    setAuthError(null);
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    try {
+      await currentUser.reload();
+      await currentUser.getIdToken(true);
+      await evaluateAdminIdentity(auth.currentUser);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unable to refresh authentication status.';
+      setAuthError(msg);
     }
   };
 
@@ -291,6 +344,9 @@ export const StoreConfigProvider: React.FC<{ children: React.ReactNode }> = ({ c
         adminRole,
         authError,
         signInWithGoogle,
+        signInWithEmailPassword,
+        sendAdminVerificationEmail,
+        refreshAdminAuthStatus,
         signOutAdmin,
       }}
     >

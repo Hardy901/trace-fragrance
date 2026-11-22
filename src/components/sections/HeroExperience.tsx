@@ -94,11 +94,13 @@ export const HeroExperience: React.FC = () => {
               className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/10 backdrop-blur-md border border-white/15 text-white/80 text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em]"
             >
               <span>
-                [ DISCOVERY SET 4 × 5ML // {discoverySet.formattedPrice}
-                {featuredCoupon && discoveryDiscountedPrice !== null
-                  ? ` • CODE: ${featuredCoupon.code} FOR ${formatINR(discoveryDiscountedPrice)}`
-                  : ''}{' '}
-                ]
+                {!discoverySet.inStock
+                  ? `[ DISCOVERY SET // OUT OF STOCK ]`
+                  : `[ DISCOVERY SET 4 × 5ML // ${discoverySet.formattedPrice}${
+                      featuredCoupon && discoveryDiscountedPrice !== null
+                        ? ` • CODE: ${featuredCoupon.code} FOR ${formatINR(discoveryDiscountedPrice)}`
+                        : ''
+                    } ]`}
               </span>
             </motion.div>
           </motion.div>
@@ -176,7 +178,9 @@ export const HeroExperience: React.FC = () => {
               whileTap={{ scale: 0.97 }}
               className="px-6 py-3.5 bg-transparent border border-white/40 text-white text-xs font-mono uppercase tracking-[0.2em] hover:bg-white/10 hover:border-white transition-all duration-300 text-center cursor-pointer shrink-0"
             >
-              Discovery Set ({discoverySet.formattedPrice})
+              {discoverySet.inStock
+                ? `Discovery Set (${discoverySet.formattedPrice})`
+                : 'Discovery Set (OUT OF STOCK)'}
             </motion.button>
           </motion.div>
         </div>

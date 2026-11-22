@@ -19,6 +19,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
 
   const handleAddToCart = (e: React.MouseEvent, product: FragranceProduct) => {
     e.stopPropagation();
+    if (!discoverySet.inStock || !product.inStock) return;
     addItem({
       id: discoverySet.id,
       name: discoverySet.name,
@@ -93,7 +94,9 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
           }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8"
         >
-          {fragrances.map((product, idx) => (
+          {fragrances.map((product, idx) => {
+            const isOutOfStock = !product.inStock || !discoverySet.inStock;
+            return (
             <motion.div
               key={product.id}
               variants={{
@@ -114,16 +117,24 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
                 0{idx + 1} // {product.name.replace(' ELIXIR', '')}
               </div>
 
-              <div className="absolute top-3 right-3 z-20 text-[9px] font-mono text-[#DED4C7] font-bold bg-black/60 px-2 py-0.5 border border-white/10">
-                30% EXTRAIT
-              </div>
+              {isOutOfStock ? (
+                <div className="absolute top-3 right-3 z-20 text-[10px] font-mono tracking-widest uppercase text-white font-bold bg-[#991B1B] px-2.5 py-1 border border-white/30 shadow-md">
+                  OUT OF STOCK
+                </div>
+              ) : (
+                <div className="absolute top-3 right-3 z-20 text-[9px] font-mono text-[#DED4C7] font-bold bg-black/60 px-2 py-0.5 border border-white/10">
+                  30% EXTRAIT
+                </div>
+              )}
 
               {/* Product Visual Container with Elemental Cave */}
               <div className="relative aspect-3/4 overflow-hidden bg-[#151413] flex items-center justify-center border-b border-white/10">
                 <img
                   src={product.panelImage}
                   alt={`TRACE ${product.number} ${product.name} elemental sanctuary`}
-                  className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-108"
+                  className={`w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-108 ${
+                    isOutOfStock ? 'grayscale opacity-70' : ''
+                  }`}
                   loading="lazy"
                 />
 
@@ -190,12 +201,19 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
                   </div>
 
                   <motion.button
-                    whileTap={{ scale: 0.93 }}
+                    whileTap={isOutOfStock ? undefined : { scale: 0.93 }}
+                    disabled={isOutOfStock}
                     onClick={(e) => handleAddToCart(e, product)}
-                    className="px-3 py-2 bg-white text-[#121110] text-[10px] font-mono font-bold tracking-wider uppercase hover:bg-[#DED4C7] transition-colors flex items-center gap-1 cursor-pointer shadow-md"
-                    aria-label="Add Discovery Set to bag"
+                    className={`px-3 py-2 text-[10px] font-mono font-bold tracking-wider uppercase transition-colors flex items-center gap-1 shadow-md ${
+                      isOutOfStock
+                        ? 'bg-[#3A3835] text-white/70 border border-white/20 cursor-not-allowed'
+                        : 'bg-white text-[#121110] hover:bg-[#DED4C7] cursor-pointer'
+                    }`}
+                    aria-label={isOutOfStock ? `${product.name} is out of stock` : 'Add Discovery Set to bag'}
                   >
-                    {addedId === product.id ? (
+                    {isOutOfStock ? (
+                      <span>OUT OF STOCK</span>
+                    ) : addedId === product.id ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-[#713D43]" />
                         <span>ADDED</span>
@@ -210,7 +228,8 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
                 </div>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </motion.div>
 
       </div>
