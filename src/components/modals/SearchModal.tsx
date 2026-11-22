@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, ArrowRight, Sparkles } from 'lucide-react';
-import { FRAGRANCES, DISCOVERY_SET, type FragranceProduct } from '../../data/products';
+import type { FragranceProduct } from '../../data/products';
 import { useCart } from '../../context/CartContext';
+import { useStoreConfig } from '../../context/StoreConfigContext';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onClose,
   onSelectProduct
 }) => {
+  const { fragrances, discoverySet } = useStoreConfig();
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const { addItem } = useCart();
@@ -45,7 +47,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
   const cleanQuery = query.toLowerCase().trim();
 
-  const matchedFragrances = FRAGRANCES.filter(f => {
+  const matchedFragrances = fragrances.filter(f => {
     if (!cleanQuery) return true;
     const matchName = f.name.toLowerCase().includes(cleanQuery);
     const matchAlt = f.alternateName?.toLowerCase().includes(cleanQuery);
@@ -62,8 +64,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   });
 
   const matchDiscovery = !cleanQuery ||
-    DISCOVERY_SET.name.toLowerCase().includes(cleanQuery) ||
-    DISCOVERY_SET.shortDescription.toLowerCase().includes(cleanQuery) ||
+    discoverySet.name.toLowerCase().includes(cleanQuery) ||
+    discoverySet.shortDescription.toLowerCase().includes(cleanQuery) ||
     'discovery set'.includes(cleanQuery) ||
     'miniature'.includes(cleanQuery) ||
     'vials'.includes(cleanQuery);
@@ -124,8 +126,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             <div className="p-3 bg-[#F3EFE8]/70 border border-[#DED4C7] flex items-center justify-between gap-4 group hover:border-[#B7A99A] transition-colors">
               <div className="flex items-center gap-3">
                 <img
-                  src={DISCOVERY_SET.images.boxClosed}
-                  alt={DISCOVERY_SET.name}
+                  src={discoverySet.images.boxClosed}
+                  alt={discoverySet.name}
                   className="w-14 h-14 object-cover border border-[#DED4C7]"
                 />
                 <div>
@@ -134,22 +136,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     <span>Curated Set</span>
                   </div>
                   <h3 className="font-editorial text-lg text-[#242321] tracking-wide">
-                    {DISCOVERY_SET.name}
+                    {discoverySet.name}
                   </h3>
                   <p className="text-xs text-[#242321]/70 font-mono">
-                    {DISCOVERY_SET.formattedPrice} • {DISCOVERY_SET.configuration}
+                    {discoverySet.formattedPrice} • {discoverySet.configuration}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => {
                   addItem({
-                    id: DISCOVERY_SET.id,
-                    name: DISCOVERY_SET.name,
-                    category: DISCOVERY_SET.subtitle,
-                    price: DISCOVERY_SET.price,
-                    image: DISCOVERY_SET.images.boxClosed,
-                    volume: DISCOVERY_SET.configuration
+                    id: discoverySet.id,
+                    name: discoverySet.name,
+                    category: discoverySet.subtitle,
+                    price: discoverySet.price,
+                    image: discoverySet.images.boxClosed,
+                    volume: discoverySet.configuration
                   });
                   onClose();
                 }}
@@ -199,17 +201,17 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="font-mono text-xs text-[#713D43] font-bold">
-                    In Set ₹799
+                    In Set {discoverySet.formattedPrice}
                   </span>
                   <button
                     onClick={() => {
                       addItem({
-                        id: DISCOVERY_SET.id,
-                        name: DISCOVERY_SET.name,
-                        category: DISCOVERY_SET.subtitle,
-                        price: DISCOVERY_SET.price,
+                        id: discoverySet.id,
+                        name: discoverySet.name,
+                        category: discoverySet.subtitle,
+                        price: discoverySet.price,
                         image: '/assets/discovery-box-new.jpg',
-                        volume: DISCOVERY_SET.configuration
+                        volume: discoverySet.configuration
                       });
                       onClose();
                     }}

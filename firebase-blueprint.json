@@ -1,0 +1,466 @@
+{
+  "entities": {
+    "StorePricingConfig": {
+      "title": "StorePricingConfig",
+      "description": "Global storefront pricing, shipping thresholds, payment toggles, and featured promotional settings synchronized live to all shoppers.",
+      "type": "object",
+      "properties": {
+        "discoverySetPrice": {
+          "type": "number",
+          "description": "Live MRP price in INR for the 4 x 5ml Discovery Set (1 to 100000)."
+        },
+        "discoverySetInStock": {
+          "type": "boolean",
+          "description": "Whether the Discovery Set is currently available for purchase."
+        },
+        "fragrancePrices": {
+          "type": "object",
+          "description": "Map of fragrance product IDs to their live MRP price in INR."
+        },
+        "fragranceStock": {
+          "type": "object",
+          "description": "Map of fragrance product IDs to in-stock availability booleans."
+        },
+        "shippingFee": {
+          "type": "number",
+          "description": "Standard express shipping fee in INR when below free shipping threshold (0 to 5000)."
+        },
+        "freeShippingThreshold": {
+          "type": "number",
+          "description": "Minimum cart subtotal in INR to unlock complimentary shipping (0 to 100000)."
+        },
+        "codEnabled": {
+          "type": "boolean",
+          "description": "Whether Cash on Delivery (COD) is enabled at checkout."
+        },
+        "codFee": {
+          "type": "number",
+          "description": "Optional additional handling fee in INR for Cash on Delivery orders (0 to 1000)."
+        },
+        "prepaidEnabled": {
+          "type": "boolean",
+          "description": "Whether Prepaid (UPI / Card) checkout is enabled."
+        },
+        "featuredCouponCode": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]*$",
+          "description": "Uppercase coupon code highlighted across hero, marquee, product cards, and cart drawer."
+        },
+        "promoBannerText": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "Optional custom promotional copy displayed on the storefront."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Email of the verified administrator who last published pricing changes."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last pricing update."
+        }
+      },
+      "required": [
+        "discoverySetPrice",
+        "discoverySetInStock",
+        "fragrancePrices",
+        "fragranceStock",
+        "shippingFee",
+        "freeShippingThreshold",
+        "codEnabled",
+        "codFee",
+        "prepaidEnabled",
+        "featuredCouponCode",
+        "promoBannerText",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Live discount coupon code managed by administrators and validated in real time on the storefront cart.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]+$",
+          "description": "Unique uppercase coupon code matching document ID."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Human-readable description of the promotional offer."
+        },
+        "discountType": {
+          "type": "string",
+          "enum": ["fixed", "percent"],
+          "description": "Whether the discount is a fixed INR amount or a percentage."
+        },
+        "discountValue": {
+          "type": "number",
+          "description": "Discount magnitude (INR amount or percentage 1-100)."
+        },
+        "applyPerItem": {
+          "type": "boolean",
+          "description": "For fixed discounts, whether to apply per unit/line item or once per order."
+        },
+        "minOrderAmount": {
+          "type": "number",
+          "description": "Minimum cart subtotal in INR required to apply this coupon."
+        },
+        "maxDiscount": {
+          "type": "number",
+          "description": "Maximum discount cap in INR (0 means uncapped up to subtotal)."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether shoppers can currently redeem this coupon."
+        },
+        "usageCount": {
+          "type": "number",
+          "description": "Number of times this coupon has been redeemed."
+        },
+        "maxUses": {
+          "type": "number",
+          "description": "Optional maximum redemptions allowed (0 means unlimited)."
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Email of the verified admin who created this coupon."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when coupon was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when coupon was last modified."
+        }
+      },
+      "required": [
+        "code",
+        "description",
+        "discountType",
+        "discountValue",
+        "applyPerItem",
+        "minOrderAmount",
+        "maxDiscount",
+        "active",
+        "usageCount",
+        "maxUses",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order record tracking COD or Prepaid payment status, shipping PII, items, and fulfillment lifecycle. Strictly readable by verified admins only.",
+      "type": "object",
+      "properties": {
+        "orderNumber": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 32,
+          "pattern": "^TRC-[A-Z0-9\\-]+$",
+          "description": "Unique human-readable order reference number matching document ID."
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Customer full name."
+        },
+        "customerEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 5,
+          "maxLength": 160,
+          "description": "Customer email address."
+        },
+        "customerPhone": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 24,
+          "description": "Customer mobile phone number."
+        },
+        "shippingAddress": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 300,
+          "description": "Full delivery street address."
+        },
+        "city": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Delivery city."
+        },
+        "pincode": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 6,
+          "pattern": "^[0-9]{6}$",
+          "description": "6-digit Indian postal PIN code."
+        },
+        "items": {
+          "type": "array",
+          "description": "Bounded list (1 to 20) of purchased items with snapshot pricing."
+        },
+        "subtotal": {
+          "type": "number",
+          "description": "Order MRP subtotal in INR."
+        },
+        "discount": {
+          "type": "number",
+          "description": "Applied coupon discount in INR."
+        },
+        "couponCode": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9_\\-]*$",
+          "description": "Coupon code applied at checkout, or empty string if none."
+        },
+        "shippingFee": {
+          "type": "number",
+          "description": "Express shipping charge in INR."
+        },
+        "codFee": {
+          "type": "number",
+          "description": "Additional COD handling charge in INR (0 for prepaid)."
+        },
+        "totalPrice": {
+          "type": "number",
+          "description": "Final payable order total in INR."
+        },
+        "paymentType": {
+          "type": "string",
+          "enum": ["cod", "prepaid"],
+          "description": "Whether the order is Cash on Delivery (cod) or Paid Before (prepaid)."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["cod", "upi", "cards"],
+          "description": "Specific payment channel chosen at checkout."
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["pending_cod", "cod_collected", "paid", "pending_verification", "refunded"],
+          "description": "Current payment reconciliation status."
+        },
+        "paymentReference": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80,
+          "description": "Optional UPI UTR or transaction reference for prepaid orders."
+        },
+        "fulfillmentStatus": {
+          "type": "string",
+          "enum": ["placed", "confirmed", "packed", "dispatched", "delivered", "cancelled"],
+          "description": "Current order fulfillment stage."
+        },
+        "trackingNumber": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80,
+          "description": "Courier AWB or tracking code assigned by admin."
+        },
+        "adminNotes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500,
+          "description": "Internal concierge and dispatch notes editable only by admins."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "Admin email who last modified the order."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp when order was placed."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest update."
+        }
+      },
+      "required": [
+        "orderNumber",
+        "customerName",
+        "customerEmail",
+        "customerPhone",
+        "shippingAddress",
+        "city",
+        "pincode",
+        "items",
+        "subtotal",
+        "discount",
+        "couponCode",
+        "shippingFee",
+        "codFee",
+        "totalPrice",
+        "paymentType",
+        "paymentMethod",
+        "paymentStatus",
+        "paymentReference",
+        "fulfillmentStatus",
+        "trackingNumber",
+        "adminNotes",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized administrator registry record keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the authorized admin."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 5,
+          "maxLength": 160,
+          "description": "Verified Google account email address."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Display name of the administrator."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["owner", "manager"],
+          "description": "Role tier; only owner can grant or revoke admin access."
+        },
+        "addedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Email of the owner who provisioned this admin."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp when admin access was granted."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "displayName",
+        "role",
+        "addedBy",
+        "createdAt"
+      ]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable append-only security and operations audit log recording every admin action.",
+      "type": "object",
+      "properties": {
+        "actorUid": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the administrator performing the action."
+        },
+        "actorEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 5,
+          "maxLength": 160,
+          "description": "Verified email of the administrator performing the action."
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "pricing_updated",
+            "coupon_created",
+            "coupon_updated",
+            "coupon_deleted",
+            "order_updated",
+            "admin_added",
+            "admin_removed",
+            "session_login"
+          ],
+          "description": "Categorized admin event type."
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Document ID or resource identifier affected by the action."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "description": "Human-readable audit summary of what changed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp of the audit event."
+        }
+      },
+      "required": [
+        "actorUid",
+        "actorEmail",
+        "action",
+        "targetId",
+        "summary",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/store_config/{configId}": {
+      "schema": { "$ref": "#/entities/StorePricingConfig" },
+      "description": "Singleton global storefront pricing and promotional configuration document (/store_config/pricing)."
+    },
+    "/coupons/{couponId}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Live coupon codes keyed by uppercase code string."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer orders containing COD/Prepaid status, items, and shipping PII. Strictly admin-readable only."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Registry of verified administrators authorized to operate the TRACE Admin Panel."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Append-only security audit trail of all admin operations."
+    }
+  }
+}

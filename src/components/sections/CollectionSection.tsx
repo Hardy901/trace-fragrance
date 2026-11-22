@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, Plus, Check } from 'lucide-react';
-import { FRAGRANCES, DISCOVERY_SET, type FragranceProduct } from '../../data/products';
+import type { FragranceProduct } from '../../data/products';
 import { useCart } from '../../context/CartContext';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 import { StarEmblem } from '../brand/TraceLogo';
 import { AnimatedText } from '../common/AnimatedText';
 
@@ -11,18 +13,19 @@ interface CollectionSectionProps {
 }
 
 export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectProduct }) => {
+  const { fragrances, discoverySet, featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
   const { addItem } = useCart();
   const [addedId, setAddedId] = useState<string | null>(null);
 
   const handleAddToCart = (e: React.MouseEvent, product: FragranceProduct) => {
     e.stopPropagation();
     addItem({
-      id: DISCOVERY_SET.id,
-      name: DISCOVERY_SET.name,
-      category: DISCOVERY_SET.subtitle,
-      price: DISCOVERY_SET.price,
+      id: discoverySet.id,
+      name: discoverySet.name,
+      category: discoverySet.subtitle,
+      price: discoverySet.price,
       image: '/assets/discovery-box-new.jpg',
-      volume: DISCOVERY_SET.configuration
+      volume: discoverySet.configuration
     });
 
     setAddedId(product.id);
@@ -64,7 +67,12 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
             transition={{ duration: 0.6, delay: 0.3 }}
             className="max-w-md font-mono text-xs text-white/60 space-y-1"
           >
-            <p>// 4 × 5ML DISCOVERY SET // ₹799 (₹699 WITH 'TRACE2026')</p>
+            <p>
+              // 4 × 5ML DISCOVERY SET // {discoverySet.formattedPrice}
+              {featuredCoupon && discoveryDiscountedPrice !== null
+                ? ` (${formatINR(discoveryDiscountedPrice)} WITH '${featuredCoupon.code}')`
+                : ''}
+            </p>
             <p className="text-white/80 font-body text-sm pt-1">
               Full flacons are currently cellaring in archive. Discover all four expressions now in the curated presentation box.
             </p>
@@ -85,7 +93,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
           }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8"
         >
-          {FRAGRANCES.map((product, idx) => (
+          {fragrances.map((product, idx) => (
             <motion.div
               key={product.id}
               variants={{
@@ -169,7 +177,12 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({ onSelectPr
                 <div className="pt-4 border-t border-white/15 flex items-center justify-between">
                   <div>
                     <span className="font-mono text-base font-bold text-white">
-                      ₹799 <span className="text-[10px] text-[#713D43] font-bold">(₹699 CODE)</span>
+                      {discoverySet.formattedPrice}{' '}
+                      {featuredCoupon && discoveryDiscountedPrice !== null && (
+                        <span className="text-[10px] text-[#713D43] font-bold">
+                          ({formatINR(discoveryDiscountedPrice)} CODE)
+                        </span>
+                      )}
                     </span>
                     <span className="block text-[9px] font-mono text-[#DED4C7] font-bold">
                       IN 4 × 5ML DISCOVERY SET

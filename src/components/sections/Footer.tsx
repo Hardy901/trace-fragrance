@@ -1,8 +1,15 @@
 import React from 'react';
+import { Lock } from 'lucide-react';
 import { TraceLogo, StarEmblem } from '../brand/TraceLogo';
 import { BRAND_CONFIG } from '../../data/products';
+import { useStoreConfig } from '../../context/StoreConfigContext';
 
-export const Footer: React.FC = () => {
+interface FooterProps {
+  onOpenAdmin?: () => void;
+}
+
+export const Footer: React.FC<FooterProps> = ({ onOpenAdmin }) => {
+  const { discoverySet } = useStoreConfig();
   const scrollTo = (id: string) => {
     document.querySelector(id)?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -78,7 +85,7 @@ export const Footer: React.FC = () => {
                   onClick={() => scrollTo('#discovery-set')}
                   className="text-[#DED4C7] font-semibold hover:underline underline-offset-4 uppercase cursor-pointer"
                 >
-                  The Discovery Set (4 × 5ml) // ₹799
+                  The Discovery Set (4 × 5ml) // {discoverySet.formattedPrice}
                 </button>
               </li>
             </ul>
@@ -162,18 +169,31 @@ export const Footer: React.FC = () => {
             <span>© 2026 TRACE FRAGRANCES. ALL RIGHTS RESERVED.</span>
           </div>
 
-          <div className="flex items-center space-x-6 text-[11px] tracking-wider uppercase">
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-[11px] tracking-wider uppercase">
             <span className="hover:text-[#FAF8F4] transition-colors cursor-pointer">
               Privacy Policy
             </span>
             <span>•</span>
             <span className="hover:text-[#FAF8F4] transition-colors cursor-pointer">
-              Terms & Conditions
+              Terms &amp; Conditions
             </span>
             <span>•</span>
             <span className="hover:text-[#FAF8F4] transition-colors cursor-pointer">
-              Shipping & Returns
+              Shipping &amp; Returns
             </span>
+            {onOpenAdmin && (
+              <>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={onOpenAdmin}
+                  className="inline-flex items-center gap-1.5 text-[#DED4C7]/80 hover:text-white transition-colors uppercase cursor-pointer"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Admin Portal</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 

@@ -2,10 +2,23 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { FAQ_ITEMS } from '../../data/products';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 import { StarEmblem } from '../brand/TraceLogo';
 import { AnimatedText } from '../common/AnimatedText';
 
 export const FAQSection: React.FC = () => {
+  const { pricing } = useStoreConfig();
+
+  const resolvedFaqItems = FAQ_ITEMS.map(item =>
+    item.id === 'faq-6'
+      ? {
+          ...item,
+          answer: `We offer express shipping across India. Orders are dispatched within 24 to 48 business hours. Delivery takes 2–4 business days for metro areas. Complimentary shipping is provided on orders over ${formatINR(pricing.freeShippingThreshold)}.`,
+        }
+      : item
+  );
+
   return (
     <section className="py-24 md:py-36 bg-[#F3EFE8] relative border-b border-[#DED4C7]">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -50,12 +63,12 @@ export const FAQSection: React.FC = () => {
           className="space-y-3"
           aria-labelledby="faq-heading"
         >
-          {FAQ_ITEMS.map((item, idx) => (
+          {resolvedFaqItems.map((item, idx) => (
             <details
               key={item.id}
               name="trace-faq"
               className="group bg-[#FAF8F4] border border-[#DED4C7] overflow-hidden transition-all duration-300 open:border-[#B7A99A] open:shadow-xs"
-              {...(idx === 0 ? { defaultOpen: true } : {})}
+              open={idx === 0}
             >
               <summary className="p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer select-none focus:outline-none focus-visible:bg-[#F3EFE8] transition-colors hover:bg-white/80">
                 <div className="flex items-center gap-3">

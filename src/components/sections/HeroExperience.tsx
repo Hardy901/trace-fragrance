@@ -2,11 +2,14 @@ import React, { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { ArrowDown, ArrowRight } from 'lucide-react';
 import { StarEmblem } from '../brand/TraceLogo';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 
 const heroTextChars = 'BEYOND SCENT.'.split('');
 const heroTextChars2 = 'INTO MEMORY.'.split('');
 
 export const HeroExperience: React.FC = () => {
+  const { discoverySet, featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
   const sectionRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -90,7 +93,13 @@ export const HeroExperience: React.FC = () => {
               transition={{ duration: 0.5, delay: 0.9 }}
               className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/10 backdrop-blur-md border border-white/15 text-white/80 text-[10px] sm:text-xs font-mono uppercase tracking-[0.2em]"
             >
-              <span>[ DISCOVERY SET 4 × 5ML // ₹799 • CODE: TRACE2026 FOR ₹699 ]</span>
+              <span>
+                [ DISCOVERY SET 4 × 5ML // {discoverySet.formattedPrice}
+                {featuredCoupon && discoveryDiscountedPrice !== null
+                  ? ` • CODE: ${featuredCoupon.code} FOR ${formatINR(discoveryDiscountedPrice)}`
+                  : ''}{' '}
+                ]
+              </span>
             </motion.div>
           </motion.div>
 
@@ -167,7 +176,7 @@ export const HeroExperience: React.FC = () => {
               whileTap={{ scale: 0.97 }}
               className="px-6 py-3.5 bg-transparent border border-white/40 text-white text-xs font-mono uppercase tracking-[0.2em] hover:bg-white/10 hover:border-white transition-all duration-300 text-center cursor-pointer shrink-0"
             >
-              Discovery Set (₹799)
+              Discovery Set ({discoverySet.formattedPrice})
             </motion.button>
           </motion.div>
         </div>

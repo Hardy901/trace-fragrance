@@ -1,5 +1,7 @@
 import React from 'react';
 import { StarEmblem } from './TraceLogo';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 
 interface MarqueeTickerProps {
   className?: string;
@@ -8,18 +10,22 @@ interface MarqueeTickerProps {
 
 export const MarqueeTicker: React.FC<MarqueeTickerProps> = ({
   className = '',
-  inverted = false
+  inverted = false,
 }) => {
+  const { discoverySet, featuredCoupon, discoveryDiscountedPrice, pricing } = useStoreConfig();
+
   const tickerItems = [
     '30% PURE OIL CONCENTRATION',
     '18–24 HOURS UNBROKEN STAY',
     'EXTRAIT DE PARFUM ELIXIRS',
-    'DISCOVERY SET 4 × 5ML // ₹799',
-    'CODE: TRACE2026 FOR ₹699',
+    `DISCOVERY SET 4 × 5ML // ${discoverySet.formattedPrice}`,
+    ...(featuredCoupon && discoveryDiscountedPrice !== null
+      ? [`CODE: ${featuredCoupon.code} FOR ${formatINR(discoveryDiscountedPrice)}`]
+      : []),
     '120 DAYS CELLAR MACERATION',
-    'COMPLIMENTARY EXPRESS SHIPPING OVER ₹1,500',
+    `COMPLIMENTARY EXPRESS SHIPPING OVER ${formatINR(pricing.freeShippingThreshold)}`,
     'BEYOND SCENT. INTO MEMORY',
-    'HAUTE PARFUMERIE // BATCH 01'
+    'HAUTE PARFUMERIE // BATCH 01',
   ];
 
   return (

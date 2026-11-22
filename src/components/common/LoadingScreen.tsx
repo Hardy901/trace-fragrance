@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StarEmblem } from '../brand/TraceLogo';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 
 interface LoadingScreenProps {
   onComplete?: () => void;
@@ -8,18 +10,25 @@ interface LoadingScreenProps {
 
 const brandLetters = 'TRACE'.split('');
 
+function shouldSkipPreloader(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('autostart') === '1';
+}
+
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({ onComplete }) => {
+  const { discoverySet, featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
   const [progress, setProgress] = useState(0);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(() => shouldSkipPreloader());
   const [phase, setPhase] = useState<'star' | 'text' | 'counting'>('star');
 
   useEffect(() => {
+    if (isLoaded) return;
     // Phase 1: Star reveal (0-600ms)
     const t1 = setTimeout(() => setPhase('text'), 600);
     // Phase 2: Text reveal (600-1200ms)  
     const t2 = setTimeout(() => setPhase('counting'), 1200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+  }, [isLoaded]);
 
   useEffect(() => {
     if (phase !== 'counting') return;
@@ -175,7 +184,12 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({ onComplete }) => {
             </div>
 
             <div className="flex justify-between items-center text-[9px] font-mono tracking-widest text-[#DED4C7]/25 uppercase">
-              <span>DISCOVERY SET 4 × 5ML // ₹799 (CODE: TRACE2026 → ₹699)</span>
+              <span>
+                DISCOVERY SET 4 × 5ML // {discoverySet.formattedPrice}
+                {featuredCoupon && discoveryDiscountedPrice !== null
+                  ? ` (CODE: ${featuredCoupon.code} → ${formatINR(discoveryDiscountedPrice)})`
+                  : ''}
+              </span>
               <span>EST. 2026</span>
             </div>
           </div>

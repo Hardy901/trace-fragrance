@@ -1,8 +1,14 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { BRAND_CONFIG } from '../data/products';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useStoreConfig } from './StoreConfigContext';
+import {
+  calculateCartTotals,
+  normalizeCouponCode,
+  type CouponRecord,
+  type PaymentType,
+} from '../utils/storeLogic';
 
 export interface CartItem {
-  id: string; // product id (e.g. 'fragrance-01-drift' or 'trace-discovery-set')
+  id: string;
   name: string;
   category: string;
   price: number;
@@ -26,11 +32,14 @@ interface CartContextType {
   subtotal: number;
   discount: number;
   couponCode: string | null;
+  appliedCoupon: CouponRecord | null;
   couponError: string | null;
   applyCoupon: (code: string) => boolean;
   removeCoupon: () => void;
   shipping: number;
+  codFee: number;
   totalPrice: number;
+  computeTotalsForPayment: (paymentType: PaymentType) => ReturnType<typeof calculateCartTotals>;
   freeShippingThreshold: number;
   amountNeededForFreeShipping: number;
   isCheckoutOpen: boolean;
@@ -44,7 +53,9 @@ const STORAGE_KEY = 'trace_cart_v1';
 const COUPON_STORAGE_KEY = 'trace_coupon_v1';
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [items, setItems] = useState<CartItem[]>(() => {
+  const { pricing, activeCoupons, discoverySet, fragrances } = useStoreConfig();
+
+  const [rawItems, setRawItems] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -67,6 +78,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [couponError, setCouponError] = useState<string | null>(null);
 
+  // Keep cart item unit prices live-synchronized with Firestore pricing changes
+  const items = useMemo(() => {
+    const livePriceMap = new Map<string, number>();
+    livePriceMap.set(discoverySet.id, discoverySet.price);
+    for (const f of fragrances) {
+      livePriceMap.set(f.id, f.price);
+    }
+    return rawItems.map(item => {
+      const livePrice = livePriceMap.get(item.id);
+      return livePrice !== undefined ? { ...item, price: livePrice } : item;
+    });
+  }, [rawItems, discoverySet.id, discoverySet.price, fragrances]);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
@@ -87,6 +111,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [couponCode]);
 
+  // Resolve the currently applied coupon against live Firestore active coupons
+  const appliedCoupon = useMemo(() => {
+    if (!couponCode) return null;
+    const normalized = normalizeCouponCode(couponCode);
+    return activeCoupons.find(c => c.code.toUpperCase() === normalized && c.active) || null;
+  }, [couponCode, activeCoupons]);
+
+  // If an admin disables or deletes a coupon while a shopper has it applied, notify and clear gracefully
+  useEffect(() => {
+    if (couponCode && activeCoupons.length > 0 && !appliedCoupon) {
+      setCouponCode(null);
+      setCouponError(`Coupon "${couponCode}" is no longer active.`);
+    }
+  }, [couponCode, activeCoupons, appliedCoupon]);
+
   const openCart = () => setIsOpen(true);
   const closeCart = () => setIsOpen(false);
   const toggleCart = () => setIsOpen(prev => !prev);
@@ -98,11 +137,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const closeCheckout = () => setIsCheckoutOpen(false);
 
   const addItem = (item: Omit<CartItem, 'quantity'>, quantity = 1) => {
-    setItems(prevItems => {
+    setRawItems(prevItems => {
       const existing = prevItems.find(i => i.id === item.id);
       if (existing) {
         return prevItems.map(i =>
-          i.id === item.id ? { ...i, quantity: i.quantity + quantity } : i
+          i.id === item.id ? { ...i, price: item.price, quantity: i.quantity + quantity } : i
         );
       }
       return [...prevItems, { ...item, quantity }];
@@ -111,11 +150,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const removeItem = (id: string) => {
-    setItems(prevItems => prevItems.filter(i => i.id !== id));
+    setRawItems(prevItems => prevItems.filter(i => i.id !== id));
   };
 
   const updateQuantity = (id: string, delta: number) => {
-    setItems(prevItems =>
+    setRawItems(prevItems =>
       prevItems
         .map(i => {
           if (i.id === id) {
@@ -129,20 +168,40 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const clearCart = () => {
-    setItems([]);
+    setRawItems([]);
   };
 
-  // Coupon handling: trace2026 gives ₹100 discount per discovery set or on order
   const applyCoupon = (code: string): boolean => {
-    const cleaned = code.trim().toLowerCase();
-    if (cleaned === 'trace2026') {
-      setCouponCode('TRACE2026');
-      setCouponError(null);
-      return true;
-    } else {
-      setCouponError('Invalid coupon code. Use "TRACE2026" for ₹100 OFF.');
+    const cleaned = normalizeCouponCode(code);
+    if (!cleaned) {
+      setCouponError('Please enter a valid coupon code.');
       return false;
     }
+
+    const match = activeCoupons.find(c => c.code.toUpperCase() === cleaned && c.active);
+    if (!match) {
+      const hint = pricing.featuredCouponCode
+        ? ` Try "${pricing.featuredCouponCode}".`
+        : '';
+      setCouponError(`Coupon "${cleaned}" is invalid or inactive.${hint}`);
+      return false;
+    }
+
+    const currentSubtotal = items.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
+    if (match.maxUses > 0 && match.usageCount >= match.maxUses) {
+      setCouponError(`Coupon "${match.code}" has reached its maximum redemptions.`);
+      return false;
+    }
+    if (currentSubtotal > 0 && currentSubtotal < match.minOrderAmount) {
+      setCouponError(
+        `Minimum order of ₹${match.minOrderAmount.toLocaleString('en-IN')} required for "${match.code}".`
+      );
+      return false;
+    }
+
+    setCouponCode(match.code);
+    setCouponError(null);
+    return true;
   };
 
   const removeCoupon = () => {
@@ -150,15 +209,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCouponError(null);
   };
 
-  const totalItems = items.reduce((acc, curr) => acc + curr.quantity, 0);
-  const subtotal = items.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
+  const computeTotalsForPayment = (paymentType: PaymentType) =>
+    calculateCartTotals(items, pricing, appliedCoupon, paymentType);
 
-  // Discount calculation: ₹100 off when trace2026 is applied (e.g. MRP 799 -> 699)
-  const discount = couponCode === 'TRACE2026' ? Math.min(subtotal, 100 * Math.max(1, items.length)) : 0;
-
-  const shipping = subtotal >= BRAND_CONFIG.freeShippingThreshold || subtotal === 0 ? 0 : 99;
-  const totalPrice = Math.max(0, subtotal - discount + shipping);
-  const amountNeededForFreeShipping = Math.max(0, BRAND_CONFIG.freeShippingThreshold - subtotal);
+  const defaultTotals = useMemo(
+    () => calculateCartTotals(items, pricing, appliedCoupon, 'prepaid'),
+    [items, pricing, appliedCoupon]
+  );
 
   return (
     <CartContext.Provider
@@ -172,20 +229,23 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         removeItem,
         updateQuantity,
         clearCart,
-        totalItems,
-        subtotal,
-        discount,
-        couponCode,
-        couponError,
+        totalItems: defaultTotals.totalItems,
+        subtotal: defaultTotals.subtotal,
+        discount: defaultTotals.discount,
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        appliedCoupon,
+        couponError: couponError || defaultTotals.discountError,
         applyCoupon,
         removeCoupon,
-        shipping,
-        totalPrice,
-        freeShippingThreshold: BRAND_CONFIG.freeShippingThreshold,
-        amountNeededForFreeShipping,
+        shipping: defaultTotals.shippingFee,
+        codFee: pricing.codFee,
+        totalPrice: defaultTotals.totalPrice,
+        computeTotalsForPayment,
+        freeShippingThreshold: pricing.freeShippingThreshold,
+        amountNeededForFreeShipping: defaultTotals.amountNeededForFreeShipping,
         isCheckoutOpen,
         openCheckout,
-        closeCheckout
+        closeCheckout,
       }}
     >
       {children}

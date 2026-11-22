@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { X, Check } from 'lucide-react';
-import { type FragranceProduct, DISCOVERY_SET } from '../../data/products';
+import type { FragranceProduct } from '../../data/products';
 import { useCart } from '../../context/CartContext';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 import { StarEmblem } from '../brand/TraceLogo';
 
 interface ProductQuickViewModalProps {
@@ -13,6 +15,7 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
   product,
   onClose
 }) => {
+  const { discoverySet, featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
   const { addItem } = useCart();
   const [quantity] = useState(1);
   const [added, setAdded] = useState(false);
@@ -22,12 +25,12 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
   const handleAddToCart = () => {
     addItem(
       {
-        id: DISCOVERY_SET.id,
-        name: DISCOVERY_SET.name,
-        category: DISCOVERY_SET.subtitle,
-        price: DISCOVERY_SET.price,
+        id: discoverySet.id,
+        name: discoverySet.name,
+        category: discoverySet.subtitle,
+        price: discoverySet.price,
         image: '/assets/discovery-box-new.jpg',
-        volume: DISCOVERY_SET.configuration
+        volume: discoverySet.configuration
       },
       quantity
     );
@@ -145,11 +148,13 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
             <div className="flex items-baseline justify-between">
               <div>
                 <span className="font-mono text-2xl font-bold text-[#242321]">
-                  ₹799
+                  {discoverySet.formattedPrice}
                 </span>
-                <span className="text-[10px] text-[#713D43] font-mono font-bold ml-2">
-                  (₹699 with code TRACE2026)
-                </span>
+                {featuredCoupon && discoveryDiscountedPrice !== null && (
+                  <span className="text-[10px] text-[#713D43] font-mono font-bold ml-2">
+                    ({formatINR(discoveryDiscountedPrice)} with code {featuredCoupon.code})
+                  </span>
+                )}
               </div>
               <span className="text-xs font-mono text-[#713D43] uppercase tracking-wider font-bold">
                 In 4 × 5ml Discovery Set
@@ -171,7 +176,7 @@ export const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({
                   <span>Discovery Set Added to Bag</span>
                 </>
               ) : (
-                <span>Add Discovery Set • ₹799</span>
+                <span>Add Discovery Set • {discoverySet.formattedPrice}</span>
               )}
             </button>
           </div>

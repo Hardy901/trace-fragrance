@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, Check, Layers, Droplets, Wind, ArrowRight } from 'lucide-react';
-import { FRAGRANCES, DISCOVERY_SET, type FragranceProduct } from '../../data/products';
+import type { FragranceProduct } from '../../data/products';
 import { useCart } from '../../context/CartContext';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { formatINR } from '../../utils/storeLogic';
 import { StarEmblem } from '../brand/TraceLogo';
 import { AnimatedText } from '../common/AnimatedText';
 
 export const IndividualFragranceStory: React.FC = () => {
+  const { fragrances, discoverySet, featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
   const [activeIdx, setActiveIdx] = useState(0);
-  const fragrance: FragranceProduct = FRAGRANCES[activeIdx];
+  const fragrance: FragranceProduct = fragrances[activeIdx];
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
 
@@ -48,12 +51,12 @@ export const IndividualFragranceStory: React.FC = () => {
 
   const handleAddDiscoverySet = () => {
     addItem({
-      id: DISCOVERY_SET.id,
-      name: DISCOVERY_SET.name,
-      category: DISCOVERY_SET.subtitle,
-      price: DISCOVERY_SET.price,
+      id: discoverySet.id,
+      name: discoverySet.name,
+      category: discoverySet.subtitle,
+      price: discoverySet.price,
       image: '/assets/discovery-box-new.jpg',
-      volume: DISCOVERY_SET.configuration
+      volume: discoverySet.configuration
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 1400);
@@ -107,7 +110,7 @@ export const IndividualFragranceStory: React.FC = () => {
 
         {/* Dialed / 2authenticators Luxury Pill Tabs with interactive feedback */}
         <div className="flex items-center justify-start sm:justify-center overflow-x-auto pb-4 mb-12 gap-3 no-scrollbar">
-          {FRAGRANCES.map((f, i) => {
+          {fragrances.map((f, i) => {
             const isActive = activeIdx === i;
             return (
               <motion.button
@@ -307,13 +310,15 @@ export const IndividualFragranceStory: React.FC = () => {
                 {/* 50ml Status & Discovery Set Conversion Action */}
                 <div className="pt-6 border-t border-white/15 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
                   <div>
-                    <div className="flex items-baseline gap-2.5">
+                    <div className="flex items-baseline gap-2.5 flex-wrap">
                       <span className="font-mono text-2xl sm:text-3xl font-bold text-white tracking-tight">
-                        {DISCOVERY_SET.formattedPrice}
+                        {discoverySet.formattedPrice}
                       </span>
-                      <span className="font-mono text-xs text-[#713D43] bg-[#713D43]/20 px-2 py-0.5 border border-[#713D43]/40 font-bold">
-                        ₹699 WITH CODE 'TRACE2026'
-                      </span>
+                      {featuredCoupon && discoveryDiscountedPrice !== null && (
+                        <span className="font-mono text-xs text-[#713D43] bg-[#713D43]/20 px-2 py-0.5 border border-[#713D43]/40 font-bold">
+                          {formatINR(discoveryDiscountedPrice)} WITH CODE &apos;{featuredCoupon.code}&apos;
+                        </span>
+                      )}
                     </div>
                     <span className="font-mono text-[11px] text-white/50 block mt-1">
                       Full flacons cellaring in archive • Available exclusively in 4 × 5ml set
@@ -336,7 +341,7 @@ export const IndividualFragranceStory: React.FC = () => {
                       ) : (
                         <>
                           <ShoppingBag className="w-4 h-4" />
-                          <span>ACQUIRE DISCOVERY SET // {DISCOVERY_SET.formattedPrice}</span>
+                          <span>ACQUIRE DISCOVERY SET // {discoverySet.formattedPrice}</span>
                         </>
                       )}
                     </motion.button>

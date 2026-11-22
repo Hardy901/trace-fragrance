@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Plus, Minus, Trash2, ArrowRight, ShieldCheck, Sparkles, Tag, Check } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
-import { BRAND_CONFIG } from '../../data/products';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { describeCouponSavings, formatINR } from '../../utils/storeLogic';
 
 export const CartDrawer: React.FC = () => {
   const {
@@ -14,6 +15,7 @@ export const CartDrawer: React.FC = () => {
     subtotal,
     discount,
     couponCode,
+    appliedCoupon,
     couponError,
     applyCoupon,
     removeCoupon,
@@ -21,8 +23,10 @@ export const CartDrawer: React.FC = () => {
     totalPrice,
     freeShippingThreshold,
     amountNeededForFreeShipping,
-    openCheckout
+    openCheckout,
   } = useCart();
+
+  const { featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
 
   const [inputCode, setInputCode] = useState('');
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -57,7 +61,8 @@ export const CartDrawer: React.FC = () => {
     if (ok) setInputCode('');
   };
 
-  const freeShippingProgress = Math.min(100, (subtotal / freeShippingThreshold) * 100);
+  const freeShippingProgress =
+    freeShippingThreshold > 0 ? Math.min(100, (subtotal / freeShippingThreshold) * 100) : 100;
 
   return (
     <div
@@ -85,6 +90,7 @@ export const CartDrawer: React.FC = () => {
               </h2>
             </div>
             <button
+              type="button"
               onClick={closeCart}
               className="p-2 text-[#242321] hover:text-[#713D43] transition-colors cursor-pointer"
               aria-label="Close cart"
@@ -93,28 +99,33 @@ export const CartDrawer: React.FC = () => {
             </button>
           </div>
 
-          {/* Special Coupon Promo Banner */}
-          <div className="px-6 py-2.5 bg-[#FAF3EC] border-b border-[#DED4C7] text-xs flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[#713D43] font-medium text-[11px] font-mono">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Use code <strong>TRACE2026</strong> for ₹100 OFF</span>
-            </span>
-            {!couponCode && (
-              <button
-                onClick={() => applyCoupon('trace2026')}
-                className="text-[10px] font-mono uppercase tracking-wider text-[#713D43] underline font-bold cursor-pointer"
-              >
-                Auto-Apply
-              </button>
-            )}
-          </div>
+          {/* Live Featured Coupon Promo Banner */}
+          {featuredCoupon && (
+            <div className="px-6 py-2.5 bg-[#FAF3EC] border-b border-[#DED4C7] text-xs flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-[#713D43] font-medium text-[11px] font-mono">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  Use code <strong>{featuredCoupon.code}</strong> for {describeCouponSavings(featuredCoupon)}
+                </span>
+              </span>
+              {!couponCode && (
+                <button
+                  type="button"
+                  onClick={() => applyCoupon(featuredCoupon.code)}
+                  className="text-[10px] font-mono uppercase tracking-wider text-[#713D43] underline font-bold cursor-pointer shrink-0"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Free Shipping Tier Banner */}
           <div className="px-6 py-3.5 bg-[#F3EFE8] border-b border-[#DED4C7] text-xs">
             {amountNeededForFreeShipping > 0 ? (
               <div className="space-y-1.5">
-                <div className="flex justify-between font-mono text-[11px] text-[#242321]">
-                  <span>Add ₹{amountNeededForFreeShipping} for Complimentary Shipping</span>
+                <div className="flex justify-between font-mono text-[11px] text-[#242321] tabular-nums">
+                  <span>Add {formatINR(amountNeededForFreeShipping)} for Complimentary Shipping</span>
                   <span>{Math.round(freeShippingProgress)}%</span>
                 </div>
                 <div className="w-full h-1 bg-[#DED4C7] overflow-hidden">
@@ -127,7 +138,7 @@ export const CartDrawer: React.FC = () => {
             ) : (
               <div className="flex items-center gap-2 text-[#713D43] font-medium">
                 <Sparkles className="w-4 h-4 shrink-0" />
-                <span>You've unlocked Complimentary Express Delivery</span>
+                <span>You&apos;ve unlocked Complimentary Express Delivery</span>
               </div>
             )}
           </div>
@@ -143,8 +154,9 @@ export const CartDrawer: React.FC = () => {
                   Experience all four hyper-concentrated 30% elixirs in the TRACE Discovery Set.
                 </p>
                 <button
+                  type="button"
                   onClick={closeCart}
-                  className="mt-4 px-6 py-2.5 bg-[#242321] text-[#FAF8F4] text-xs font-mono uppercase tracking-wider hover:bg-[#713D43] transition-colors"
+                  className="mt-4 px-6 py-2.5 bg-[#242321] text-[#FAF8F4] text-xs font-mono uppercase tracking-wider hover:bg-[#713D43] transition-colors cursor-pointer"
                 >
                   Explore Collection
                 </button>
@@ -168,6 +180,7 @@ export const CartDrawer: React.FC = () => {
                         </span>
                       </div>
                       <button
+                        type="button"
                         onClick={() => removeItem(item.id)}
                         className="text-[#B7A99A] hover:text-[#713D43] transition-colors p-1 cursor-pointer"
                         aria-label={`Remove ${item.name}`}
@@ -180,34 +193,38 @@ export const CartDrawer: React.FC = () => {
                       {/* Quantity stepper */}
                       <div className="inline-flex items-center border border-[#DED4C7] bg-[#F3EFE8]">
                         <button
+                          type="button"
                           onClick={() => updateQuantity(item.id, -1)}
                           className="p-1.5 hover:bg-[#DED4C7] text-[#242321] transition-colors cursor-pointer"
-                          aria-label="Decrease quantity"
+                          aria-label={`Decrease quantity of ${item.name}`}
                         >
                           <Minus className="w-3 h-3" />
                         </button>
-                        <span className="px-3 py-1 font-mono text-xs font-medium text-[#242321]">
+                        <span className="px-3 py-1 font-mono tabular-nums text-xs font-medium text-[#242321]">
                           {item.quantity}
                         </span>
                         <button
+                          type="button"
                           onClick={() => updateQuantity(item.id, 1)}
                           className="p-1.5 hover:bg-[#DED4C7] text-[#242321] transition-colors cursor-pointer"
-                          aria-label="Increase quantity"
+                          aria-label={`Increase quantity of ${item.name}`}
                         >
                           <Plus className="w-3 h-3" />
                         </button>
                       </div>
 
                       <div className="text-right">
-                        <span className="font-mono text-sm font-semibold text-[#242321] block">
-                          {BRAND_CONFIG.currencySymbol}
-                          {(item.price * item.quantity).toLocaleString('en-IN')}
+                        <span className="font-mono tabular-nums text-sm font-semibold text-[#242321] block">
+                          {formatINR(item.price * item.quantity)}
                         </span>
-                        {couponCode === 'TRACE2026' && item.id === 'trace-discovery-set' && (
-                          <span className="text-[10px] font-mono text-[#713D43] font-bold block">
-                            (₹699 with code)
-                          </span>
-                        )}
+                        {appliedCoupon &&
+                          item.id === 'trace-discovery-set' &&
+                          discoveryDiscountedPrice !== null &&
+                          featuredCoupon?.code === appliedCoupon.code && (
+                            <span className="text-[10px] font-mono text-[#713D43] font-bold block">
+                              ({formatINR(discoveryDiscountedPrice)} each with code)
+                            </span>
+                          )}
                       </div>
                     </div>
                   </div>
@@ -219,20 +236,21 @@ export const CartDrawer: React.FC = () => {
           {/* Coupon Code Section */}
           {items.length > 0 && (
             <div className="px-6 py-3.5 bg-[#FAF8F4] border-t border-[#DED4C7]">
-              {couponCode ? (
+              {couponCode && appliedCoupon ? (
                 <div className="flex items-center justify-between p-2.5 bg-[#F2EDE4] border border-[#713D43]/40">
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-[#713D43]" />
+                    <Check className="w-4 h-4 text-[#713D43] shrink-0" />
                     <div>
                       <span className="font-mono text-xs font-bold text-[#713D43] block">
                         COUPON APPLIED: {couponCode}
                       </span>
                       <span className="text-[10px] font-mono text-[#242321]/70">
-                        ₹100 discount applied • Discovery Set price ₹699
+                        {appliedCoupon.description}
                       </span>
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={removeCoupon}
                     className="text-[10px] font-mono text-[#713D43] hover:underline uppercase cursor-pointer"
                   >
@@ -246,9 +264,14 @@ export const CartDrawer: React.FC = () => {
                       <Tag className="w-3.5 h-3.5 absolute left-3 top-3 text-[#B7A99A]" />
                       <input
                         type="text"
+                        aria-label="Coupon code"
                         value={inputCode}
                         onChange={e => setInputCode(e.target.value.toUpperCase())}
-                        placeholder="COUPON (TRY: TRACE2026)"
+                        placeholder={
+                          featuredCoupon
+                            ? `COUPON (TRY: ${featuredCoupon.code})`
+                            : 'ENTER COUPON CODE'
+                        }
                         className="w-full pl-9 pr-3 py-2 bg-white border border-[#DED4C7] text-xs font-mono tracking-wider text-[#242321] uppercase placeholder:normal-case placeholder:text-[#B7A99A] focus:outline-none focus:border-[#713D43]"
                       />
                     </div>
@@ -273,9 +296,8 @@ export const CartDrawer: React.FC = () => {
               <div className="space-y-2 text-xs font-body">
                 <div className="flex justify-between text-[#242321]/70">
                   <span>Subtotal (MRP)</span>
-                  <span className="font-mono text-sm font-medium text-[#242321]">
-                    {BRAND_CONFIG.currencySymbol}
-                    {subtotal.toLocaleString('en-IN')}
+                  <span className="font-mono tabular-nums text-sm font-medium text-[#242321]">
+                    {formatINR(subtotal)}
                   </span>
                 </div>
 
@@ -283,23 +305,23 @@ export const CartDrawer: React.FC = () => {
                   <div className="flex justify-between text-[#713D43] font-medium">
                     <span className="flex items-center gap-1">
                       <Tag className="w-3 h-3" />
-                      <span>Coupon Discount (TRACE2026)</span>
+                      <span>Coupon Discount ({couponCode})</span>
                     </span>
-                    <span className="font-mono text-sm font-bold">
-                      -{BRAND_CONFIG.currencySymbol}{discount.toLocaleString('en-IN')}
+                    <span className="font-mono tabular-nums text-sm font-bold">
+                      -{formatINR(discount)}
                     </span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-[#242321]/70">
                   <span>Shipping</span>
-                  <span className="font-mono text-xs">
+                  <span className="font-mono tabular-nums text-xs">
                     {shipping === 0 ? (
                       <span className="text-[#713D43] font-medium uppercase tracking-wider">
                         Complimentary
                       </span>
                     ) : (
-                      `₹${shipping}`
+                      formatINR(shipping)
                     )}
                   </span>
                 </div>
@@ -307,30 +329,30 @@ export const CartDrawer: React.FC = () => {
                 <div className="pt-2 border-t border-[#DED4C7] flex justify-between text-sm font-medium text-[#242321]">
                   <div>
                     <span className="font-editorial text-lg tracking-wide block">Estimated Total</span>
-                    {couponCode === 'TRACE2026' && (
+                    {discount > 0 && couponCode && (
                       <span className="text-[10px] font-mono text-[#713D43] block">
-                        Special Launch Price: ₹699
+                        Code {couponCode} applied
                       </span>
                     )}
                   </div>
-                  <span className="font-mono text-lg font-bold text-[#242321]">
-                    {BRAND_CONFIG.currencySymbol}
-                    {totalPrice.toLocaleString('en-IN')}
+                  <span className="font-mono tabular-nums text-lg font-bold text-[#242321]">
+                    {formatINR(totalPrice)}
                   </span>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={openCheckout}
                 className="w-full py-4 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.25em] uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 group cursor-pointer shadow-lg"
               >
-                <span>Proceed to Checkout // ₹{totalPrice.toLocaleString('en-IN')}</span>
+                <span>Proceed to Checkout · {formatINR(totalPrice)}</span>
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </button>
 
               <div className="flex items-center justify-center gap-2 text-[10px] text-[#242321]/60 font-body">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#B7A99A]" />
-                <span>Secure Checkout • Pre-Order & Launch Edition</span>
+                <span>Secure Checkout · COD &amp; Prepaid Available</span>
               </div>
             </div>
           )}

@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { StoreConfigProvider } from './context/StoreConfigContext';
 import { CartProvider } from './context/CartContext';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { LoadingScreen } from './components/common/LoadingScreen';
 import { Navbar } from './components/sections/Navbar';
 import { HeroExperience } from './components/sections/HeroExperience';
@@ -20,15 +22,46 @@ import { SearchModal } from './components/modals/SearchModal';
 import { ProductQuickViewModal } from './components/modals/ProductQuickViewModal';
 import { CheckoutModal } from './components/modals/CheckoutModal';
 import { MarqueeTicker } from './components/brand/MarqueeTicker';
+import { AdminConsole } from './components/admin/AdminConsole';
 import type { FragranceProduct } from './data/products';
+
+function isAdminPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/');
+}
 
 export const AppContent: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<FragranceProduct | null>(null);
+  const [showAdmin, setShowAdmin] = useState<boolean>(() => isAdminPath());
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setShowAdmin(isAdminPath());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateToAdmin = () => {
+    window.history.pushState({}, '', '/admin');
+    setShowAdmin(true);
+    window.scrollTo({ top: 0 });
+  };
+
+  const navigateToStore = () => {
+    window.history.pushState({}, '', '/');
+    setShowAdmin(false);
+    window.scrollTo({ top: 0 });
+  };
+
+  if (showAdmin) {
+    return <AdminConsole onBackToStore={navigateToStore} />;
+  }
 
   return (
     <div className="relative min-h-screen bg-[#FAF8F4] text-[#242321] luxury-grain overflow-x-hidden selection:bg-[#713D43] selection:text-[#FAF8F4]">
-      {/* 2authenticators-Style Luxury Preloader */}
+      {/* Luxury Preloader (auto-skipped with ?autostart=1) */}
       <LoadingScreen />
 
       {/* 1. Navigation */}
@@ -38,13 +71,13 @@ export const AppContent: React.FC = () => {
         {/* 2. Hero Experience */}
         <HeroExperience />
 
-        {/* Dialed Coffee Kinetic Marquee Ticker */}
+        {/* Kinetic Marquee Ticker */}
         <MarqueeTicker inverted={true} />
 
         {/* 3. Brand Introduction */}
         <BrandIntro />
 
-        {/* 5. Individual Fragrance Story (The 4 Expressions with User's Clean Bottle Photos) */}
+        {/* 5. Individual Fragrance Story */}
         <IndividualFragranceStory />
 
         {/* 4. The Collection */}
@@ -79,7 +112,7 @@ export const AppContent: React.FC = () => {
       </main>
 
       {/* 13. Footer */}
-      <Footer />
+      <Footer onOpenAdmin={navigateToAdmin} />
 
       {/* Overlays & Drawers */}
       <CartDrawer />
@@ -99,8 +132,12 @@ export const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <CartProvider>
-      <AppContent />
-    </CartProvider>
+    <ErrorBoundary>
+      <StoreConfigProvider>
+        <CartProvider>
+          <AppContent />
+        </CartProvider>
+      </StoreConfigProvider>
+    </ErrorBoundary>
   );
 }

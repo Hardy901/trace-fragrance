@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, Check, Gift, Sparkles, Shield } from 'lucide-react';
-import { DISCOVERY_SET } from '../../data/products';
 import { useCart } from '../../context/CartContext';
+import { useStoreConfig } from '../../context/StoreConfigContext';
+import { describeCouponSavings, formatINR } from '../../utils/storeLogic';
 import { StarEmblem } from '../brand/TraceLogo';
 import { AnimatedText } from '../common/AnimatedText';
 
 export const DiscoverySetSection: React.FC = () => {
+  const { discoverySet, featuredCoupon, discoveryDiscountedPrice } = useStoreConfig();
   const { addItem, applyCoupon, couponCode } = useCart();
   const [activeImage, setActiveImage] = useState<'open' | 'closed'>('open');
   const [added, setAdded] = useState(false);
@@ -17,16 +19,17 @@ export const DiscoverySetSection: React.FC = () => {
   };
 
   const handleAddToCart = () => {
+    if (!discoverySet.inStock) return;
     addItem({
-      id: DISCOVERY_SET.id,
-      name: DISCOVERY_SET.name,
-      category: DISCOVERY_SET.subtitle,
-      price: DISCOVERY_SET.price,
+      id: discoverySet.id,
+      name: discoverySet.name,
+      category: discoverySet.subtitle,
+      price: discoverySet.price,
       image: '/assets/discovery-box-new.jpg',
-      volume: DISCOVERY_SET.configuration
+      volume: discoverySet.configuration
     });
-    if (!couponCode) {
-      applyCoupon('trace2026');
+    if (!couponCode && featuredCoupon) {
+      applyCoupon(featuredCoupon.code);
     }
     setAdded(true);
     setTimeout(() => setAdded(false), 1200);
@@ -139,39 +142,46 @@ export const DiscoverySetSection: React.FC = () => {
                   Limited Edition Packaging
                 </span>
                 <h3 className="font-editorial text-3xl sm:text-4xl text-[#242321] tracking-wide">
-                  {DISCOVERY_SET.name}
+                  {discoverySet.name}
                 </h3>
                 <p className="text-xs font-mono text-[#B7A99A] uppercase tracking-widest mt-1">
-                  Proposed Price • {DISCOVERY_SET.configuration}
+                  Live Price • {discoverySet.configuration}
                 </p>
               </div>
 
               <div className="border-y border-[#DED4C7] py-4">
                 <div className="flex flex-wrap items-baseline gap-3">
                   <span className="font-mono text-3xl sm:text-4xl font-bold text-[#242321]">
-                    {DISCOVERY_SET.formattedPrice}
+                    {discoverySet.formattedPrice}
                   </span>
-                  <span className="px-2.5 py-0.5 bg-[#713D43]/15 border border-[#713D43]/40 text-[#713D43] text-xs font-mono font-bold">
-                    ₹699 WITH CODE 'TRACE2026'
-                  </span>
+                  {featuredCoupon && discoveryDiscountedPrice !== null && (
+                    <span className="px-2.5 py-0.5 bg-[#713D43]/15 border border-[#713D43]/40 text-[#713D43] text-xs font-mono font-bold">
+                      {formatINR(discoveryDiscountedPrice)} WITH CODE &apos;{featuredCoupon.code}&apos;
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-[#713D43] font-body mt-2 flex items-center gap-1.5 font-medium">
-                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                  <span>Use coupon code <strong>TRACE2026</strong> for ₹100 instant discount at checkout</span>
-                </p>
+                {featuredCoupon && (
+                  <p className="text-xs text-[#713D43] font-body mt-2 flex items-center gap-1.5 font-medium">
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      Use coupon code <strong>{featuredCoupon.code}</strong> for{' '}
+                      {describeCouponSavings(featuredCoupon)} at checkout
+                    </span>
+                  </p>
+                )}
               </div>
 
               <p className="text-sm font-body text-[#242321]/80 leading-relaxed">
-                {DISCOVERY_SET.fullStory}
+                {discoverySet.fullStory}
               </p>
 
               {/* Packaging & Inclusions list */}
               <div className="space-y-3 bg-[#F3EFE8]/70 p-4 border border-[#DED4C7] text-xs font-body">
                 <span className="font-mono text-[10px] uppercase tracking-wider text-[#242321] block font-semibold">
-                  What's Inside The Box:
+                  What&apos;s Inside The Box:
                 </span>
                 <ul className="space-y-2 text-[#242321]/85">
-                  {DISCOVERY_SET.packagingDetails.map((item, idx) => (
+                  {discoverySet.packagingDetails.map((item, idx) => (
                     <motion.li
                       key={idx}
                       initial={{ opacity: 0, x: -10 }}
@@ -192,12 +202,14 @@ export const DiscoverySetSection: React.FC = () => {
             <div className="pt-6 border-t border-[#DED4C7] space-y-3">
               <motion.button
                 onClick={handleAddToCart}
-                disabled={added}
+                disabled={added || !discoverySet.inStock}
                 whileHover={{ scale: 1.02, y: -2 }}
                 whileTap={{ scale: 0.98 }}
-                className="w-full py-4 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.25em] uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 shadow-lg cursor-pointer group"
+                className="w-full py-4 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.25em] uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 shadow-lg cursor-pointer group disabled:opacity-60"
               >
-                {added ? (
+                {!discoverySet.inStock ? (
+                  <span>Currently Sold Out</span>
+                ) : added ? (
                   <>
                     <Check className="w-4 h-4 text-[#DED4C7]" />
                     <span>Added to Bag</span>
@@ -205,7 +217,12 @@ export const DiscoverySetSection: React.FC = () => {
                 ) : (
                   <>
                     <ShoppingBag className="w-4 h-4" />
-                    <span>Discover the Set • {DISCOVERY_SET.formattedPrice} (₹699 with code)</span>
+                    <span>
+                      Discover the Set • {discoverySet.formattedPrice}
+                      {featuredCoupon && discoveryDiscountedPrice !== null
+                        ? ` (${formatINR(discoveryDiscountedPrice)} with code)`
+                        : ''}
+                    </span>
                   </>
                 )}
               </motion.button>
@@ -215,7 +232,7 @@ export const DiscoverySetSection: React.FC = () => {
                   <Shield className="w-3.5 h-3.5 text-[#B7A99A]" />
                   <span>Complimentary Luxury Gift Packaging</span>
                 </span>
-                <span>Ready to ship</span>
+                <span>{discoverySet.inStock ? 'Ready to ship' : 'Restocking soon'}</span>
               </div>
             </div>
 
