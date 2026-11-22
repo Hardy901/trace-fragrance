@@ -618,10 +618,16 @@ service cloud.firestore {
     match /order_tracking/{trackingKey} {
       allow get: if isValidTrackingKey(trackingKey);
       allow list: if false;
-      allow create: if isValidTrackingKey(trackingKey)
-        && isValidOrderTracking(incoming(), trackingKey)
-        && isValidInitialTrackingState(incoming())
-        && existsAfter(/databases/$(database)/documents/orders/$(incoming().orderNumber));
+      allow create: if (isValidTrackingKey(trackingKey)
+          && isValidOrderTracking(incoming(), trackingKey)
+          && isValidInitialTrackingState(incoming())
+          && existsAfter(/databases/$(database)/documents/orders/$(incoming().orderNumber)))
+        || (isVerifiedUser()
+          && isValidTrackingKey(trackingKey)
+          && isValidOrderTracking(incoming(), trackingKey)
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/orders/$(incoming().orderNumber))
+          && isAdmin());
       allow update: if isVerifiedUser()
         && isValidTrackingKey(trackingKey)
         && isValidOrderTracking(incoming(), trackingKey)

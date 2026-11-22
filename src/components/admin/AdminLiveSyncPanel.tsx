@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   CheckCircle2,
   Database,
@@ -12,8 +12,9 @@ import {
   Trash2,
   XCircle,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import firebaseConfig from '../../../firebase-applet-config.json';
 import { useStoreConfig } from '../../context/StoreConfigContext';
@@ -34,6 +35,13 @@ import {
 
 interface AdminLiveSyncPanelProps {
   onSwitchToFullSignIn: () => void;
+}
+
+interface LiveOrderState {
+  loading: boolean;
+  missing: boolean;
+  fromCache: boolean;
+  record: OrderTrackingRecord | null;
 }
 
 const STATUS_BADGE_MAP: Record<FulfillmentStatus, { label: string; tone: string }> = {
@@ -61,9 +69,9 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
   const [watchedOrders, setWatchedOrders] = useState<SavedCustomerOrderRef[]>(() =>
     readSavedCustomerOrders()
   );
-  const [liveRecords, setLiveRecords] = useState<
-    Record<string, { loading: boolean; missing: boolean; record: OrderTrackingRecord | null }>
-  >({});
+  const [liveRecords, setLiveRecords] = useState<Record<string, LiveOrderState>>({});
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const [orderRefInput, setOrderRefInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -71,6 +79,24 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
+
+  // Keep watchedOrders automatically synchronized if orders are placed in another tab on this browser
+  useEffect(() => {
+    const syncLocalRefs = () => {
+      setWatchedOrders(readSavedCustomerOrders());
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncLocalRefs();
+      }
+    };
+    window.addEventListener('storage', syncLocalRefs);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('storage', syncLocalRefs);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   // Subscribe in real time to each watched order's PII-free Firestore tracking projection
   useEffect(() => {
@@ -82,19 +108,23 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
         [ref.trackingKey]: prev[ref.trackingKey] ?? {
           loading: true,
           missing: false,
+          fromCache: false,
           record: null,
         },
       }));
 
       return onSnapshot(
         doc(db, 'order_tracking', ref.trackingKey),
+        { includeMetadataChanges: true },
         snap => {
+          setLastSyncedAt(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
           if (snap.exists()) {
             setLiveRecords(prev => ({
               ...prev,
               [ref.trackingKey]: {
                 loading: false,
                 missing: false,
+                fromCache: snap.metadata.fromCache,
                 record: snap.data() as OrderTrackingRecord,
               },
             }));
@@ -104,6 +134,7 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
               [ref.trackingKey]: {
                 loading: false,
                 missing: true,
+                fromCache: snap.metadata.fromCache,
                 record: null,
               },
             }));
@@ -115,6 +146,7 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
             [ref.trackingKey]: {
               loading: false,
               missing: true,
+              fromCache: false,
               record: null,
             },
           }));
@@ -126,6 +158,51 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
       unsubscribers.forEach(unsub => unsub());
     };
   }, [watchedOrders]);
+
+  // Force-fetch every watched order directly from Firestore's live server (bypassing local cache)
+  const handleRefreshFromServer = useCallback(async () => {
+    const latestRefs = readSavedCustomerOrders();
+    setWatchedOrders(latestRefs);
+    if (latestRefs.length === 0) return;
+
+    setRefreshingAll(true);
+    try {
+      await Promise.all(
+        latestRefs.map(async ref => {
+          try {
+            const snap = await getDocFromServer(doc(db, 'order_tracking', ref.trackingKey));
+            setLiveRecords(prev => ({
+              ...prev,
+              [ref.trackingKey]: snap.exists()
+                ? {
+                    loading: false,
+                    missing: false,
+                    fromCache: false,
+                    record: snap.data() as OrderTrackingRecord,
+                  }
+                : {
+                    loading: false,
+                    missing: true,
+                    fromCache: false,
+                    record: null,
+                  },
+            }));
+          } catch {
+            // Retain last known snapshot if transient network issue occurs
+          }
+        })
+      );
+      setLastSyncedAt(
+        new Date().toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      );
+    } finally {
+      setRefreshingAll(false);
+    }
+  }, []);
 
   const handleVerifyOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,11 +229,11 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
     setChecking(true);
     try {
       const trackingKey = await deriveOrderTrackingKey(normalizedRef, normalizedEmail);
-      const snap = await getDoc(doc(db, 'order_tracking', trackingKey));
+      const snap = await getDocFromServer(doc(db, 'order_tracking', trackingKey));
       if (!snap.exists()) {
         setFeedback({
           type: 'error',
-          text: 'No synced order found in Firestore for that Order Reference and email pair.',
+          text: 'No synced order found on Firestore server for that Order Reference and email pair.',
         });
         return;
       }
@@ -168,16 +245,32 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
         placedAt: new Date().toISOString(),
       });
       setWatchedOrders(updated);
+      setLiveRecords(prev => ({
+        ...prev,
+        [trackingKey]: {
+          loading: false,
+          missing: false,
+          fromCache: false,
+          record: data,
+        },
+      }));
+      setLastSyncedAt(
+        new Date().toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      );
       setOrderRefInput('');
       setEmailInput('');
       setFeedback({
         type: 'success',
-        text: `Verified live in Firestore: ${data.orderNumber} (${data.fulfillmentStatus.toUpperCase()}).`,
+        text: `Verified live on Firestore server: ${data.orderNumber} (${data.fulfillmentStatus.toUpperCase()}).`,
       });
     } catch {
       setFeedback({
         type: 'error',
-        text: 'Unable to query Firestore right now. Check your network connection and retry.',
+        text: 'Unable to reach Firestore server right now. Check your network connection and retry.',
       });
     } finally {
       setChecking(false);
@@ -234,10 +327,10 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
           </div>
           <div className="p-2.5 bg-white border border-[#DED4C7]">
             <span className="block text-[10px] font-mono uppercase tracking-wider text-[#242321]/55">
-              Orders Tracked
+              Orders Checked
             </span>
             <span className="font-mono font-semibold text-[#242321] block mt-0.5">
-              {watchedOrders.length} checked
+              {watchedOrders.length} on device
             </span>
             <span className="text-[10px] font-mono text-[#242321]/60">PII-free view</span>
           </div>
@@ -255,10 +348,10 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
       >
         <div>
           <h2 className="font-semibold text-[#242321] text-xs uppercase tracking-wider font-mono">
-            Verify Order Sync in Firestore
+            Verify Any Order Sync in Firestore
           </h2>
           <p className="text-[11px] text-[#242321]/65 mt-1 leading-relaxed">
-            Enter any test or customer Order Reference and checkout email to confirm it synced live to Firestore without needing Firebase sign-in.
+            Orders placed from other devices won&apos;t auto-list here (Firestore blocks unauthenticated listing to protect customer privacy). Enter any Order Reference and checkout email below to pull its live status straight from Firestore.
           </p>
         </div>
 
@@ -322,29 +415,44 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
           className="w-full py-2.5 px-4 bg-[#242321] text-[#FAF8F4] text-xs font-body font-semibold tracking-[0.16em] uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
         >
           <Search className="w-3.5 h-3.5" />
-          <span>{checking ? 'Checking Live Firestore...' : 'Verify Live Sync'}</span>
+          <span>{checking ? 'Checking Firestore Server...' : 'Verify Live Sync'}</span>
         </button>
       </form>
 
-      {/* 3. Live Verified Order Cards (Auto-populated from device + manual verifications) */}
+      {/* 3. Live Verified Order Cards (Auto-populated from this device + manual verifications) */}
       <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-mono uppercase tracking-wider text-[#242321]/70">
-            Live Synced Orders ({watchedOrders.length})
-          </span>
-          <span className="text-[10px] font-mono text-[#15803D]">Real-time stream</span>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-[#242321]/70">
+              Tracked Orders ({watchedOrders.length})
+            </span>
+            {lastSyncedAt && (
+              <span className="text-[10px] font-mono text-[#15803D]">
+                • Synced {lastSyncedAt}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleRefreshFromServer()}
+            disabled={refreshingAll || watchedOrders.length === 0}
+            className="inline-flex items-center gap-1 px-2 py-1 border border-[#DED4C7] bg-white text-[10px] font-mono uppercase tracking-wider text-[#242321] hover:bg-[#F3EFE8] transition-colors cursor-pointer disabled:opacity-40"
+          >
+            <RefreshCw className={`w-3 h-3 ${refreshingAll ? 'animate-spin' : ''}`} />
+            <span>{refreshingAll ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
         </div>
 
         {watchedOrders.length === 0 ? (
           <div className="p-4 bg-[#FAF8F4] border border-dashed border-[#DED4C7] text-center space-y-1.5">
             <Package className="w-5 h-5 text-[#B7A99A] mx-auto" />
-            <p className="text-xs font-medium text-[#242321]">No Orders Checked Yet</p>
+            <p className="text-xs font-medium text-[#242321]">No Orders Tracked on This Browser Yet</p>
             <p className="text-[11px] text-[#242321]/65 leading-relaxed">
-              Place a test COD order on the storefront or enter any Order Ref + Email above to verify real-time Firestore syncing.
+              Place a test COD order on this browser or enter any Order Ref + Email above to stream its live Firestore status here.
             </p>
           </div>
         ) : (
-          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-0.5">
+          <div className="space-y-2.5 max-h-80 overflow-y-auto pr-0.5">
             {watchedOrders.map(ref => {
               const state = liveRecords[ref.trackingKey];
               const record = state?.record ?? null;
@@ -375,16 +483,16 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
                         ) : (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#F0FDF4] border border-[#BBF7D0] text-[#15803D] font-mono text-[10px]">
                             <CheckCircle2 className="w-3 h-3" />
-                            <span>Synced in Firestore</span>
+                            <span>{state?.fromCache ? 'Cached (Syncing...)' : 'Live Server Sync'}</span>
                           </span>
                         )}
                       </div>
                       {record && (
-                        <p className="text-[11px] text-[#242321]/65 mt-0.5 flex items-center gap-1.5">
+                        <p className="text-[11px] text-[#242321]/65 mt-0.5 flex items-center gap-1.5 flex-wrap">
                           <Clock className="w-3 h-3 shrink-0" />
                           <span>
-                            {record.customerFirstName} • {record.city} •{' '}
-                            {formatTimestamp(record.createdAt)}
+                            {record.customerFirstName} • {record.city} • Updated{' '}
+                            {formatTimestamp(record.updatedAt || record.createdAt)}
                           </span>
                         </p>
                       )}
@@ -402,7 +510,7 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
 
                   {record && statusMeta && (
                     <>
-                      <div className="flex items-center justify-between gap-2 flex-wrap pt-1 border-t border-[#DED4C7]/70">
+                      <div className="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-[#DED4C7]/70">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span
                             className={`px-2 py-0.5 border font-mono text-[10px] uppercase tracking-wider ${statusMeta.tone}`}
@@ -434,6 +542,32 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
                             </span>
                           </div>
                         ))}
+                        {record.discount > 0 && (
+                          <div className="flex justify-between gap-2 text-[#15803D]">
+                            <span>
+                              Coupon Discount{record.couponCode ? ` (${record.couponCode})` : ''}
+                            </span>
+                            <span className="font-mono shrink-0">
+                              −{formatINR(record.discount)}
+                            </span>
+                          </div>
+                        )}
+                        {record.shippingFee > 0 && (
+                          <div className="flex justify-between gap-2 text-[#242321]/60">
+                            <span>Shipping</span>
+                            <span className="font-mono shrink-0">
+                              +{formatINR(record.shippingFee)}
+                            </span>
+                          </div>
+                        )}
+                        {record.codFee > 0 && (
+                          <div className="flex justify-between gap-2 text-[#242321]/60">
+                            <span>COD Handling Fee</span>
+                            <span className="font-mono shrink-0">
+                              +{formatINR(record.codFee)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {record.trackingNumber && (
@@ -455,10 +589,10 @@ export const AdminLiveSyncPanel: React.FC<AdminLiveSyncPanelProps> = ({
       <div className="p-3.5 bg-[#F3EFE8] border border-[#DED4C7] text-[11px] text-[#242321]/80 space-y-2 leading-relaxed">
         <div className="flex items-center gap-1.5 font-semibold text-[#242321]">
           <ShieldCheck className="w-3.5 h-3.5 text-[#713D43]" />
-          <span>Why Full Order Management Still Needs Step 2 Sign-In</span>
+          <span>Want to See Every Customer&apos;s Orders Automatically?</span>
         </div>
         <p>
-          Full customer details (phone numbers, street addresses), status updates, order deletion, and price/coupon publishing remain locked behind Firebase Authentication so customer PII can never be accessed without verified admin identity.
+          For security, Firestore only lists <strong>all orders across all devices</strong> (with customer names, phone numbers, addresses, status updates, and delete controls) after Step 2 Firebase Sign-In. While Firebase Console MFA is pending for Vercel, use your already-authorized AI Studio preview <code className="font-mono">/admin</code> to view and manage the complete all-device Orders Ledger.
         </p>
         <button
           type="button"

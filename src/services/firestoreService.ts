@@ -384,6 +384,11 @@ export async function updateOrderRecord(
   const path = `orders/${order.orderNumber}`;
   const cleanTrackingNumber = updates.trackingNumber.trim().slice(0, 80);
   try {
+    const candidateKey =
+      order.trackingKey && TRACKING_KEY_REGEX.test(order.trackingKey)
+        ? order.trackingKey
+        : await deriveOrderTrackingKey(order.orderNumber, order.customerEmail);
+
     const existingTrackingKey = await resolveExistingTrackingKey(order);
     const batch = writeBatch(db);
     batch.update(doc(db, 'orders', order.orderNumber), {
@@ -401,6 +406,28 @@ export async function updateOrderRecord(
         paymentStatus: updates.paymentStatus,
         fulfillmentStatus: updates.fulfillmentStatus,
         trackingNumber: cleanTrackingNumber,
+        updatedAt: serverTimestamp(),
+      });
+    } else if (TRACKING_KEY_REGEX.test(candidateKey)) {
+      // Backfill PII-free tracking mirror for orders created before order_tracking existed
+      batch.set(doc(db, 'order_tracking', candidateKey), {
+        trackingKey: candidateKey,
+        orderNumber: order.orderNumber,
+        customerFirstName: extractFirstName(order.customerName),
+        city: order.city.trim().slice(0, 80),
+        items: order.items.slice(0, 20),
+        subtotal: Math.round(Number(order.subtotal)),
+        discount: Math.round(Number(order.discount)),
+        couponCode: order.couponCode || '',
+        shippingFee: Math.round(Number(order.shippingFee)),
+        codFee: Math.round(Number(order.codFee)),
+        totalPrice: Math.round(Number(order.totalPrice)),
+        paymentType: order.paymentType,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: updates.paymentStatus,
+        fulfillmentStatus: updates.fulfillmentStatus,
+        trackingNumber: cleanTrackingNumber,
+        createdAt: order.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     }
