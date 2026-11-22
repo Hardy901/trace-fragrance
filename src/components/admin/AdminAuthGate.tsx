@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Lock, LogOut, ArrowLeft, Copy, Check, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Lock, LogOut, ArrowLeft, Copy, Check, AlertCircle, ExternalLink } from 'lucide-react';
 import { useStoreConfig } from '../../context/StoreConfigContext';
 import { TraceLogo } from '../brand/TraceLogo';
+import firebaseConfig from '../../../firebase-applet-config.json';
 
 interface AdminAuthGateProps {
   onBackToStore: () => void;
@@ -11,6 +12,11 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({ onBackToStore }) =
   const { authReady, user, isAdmin, authError, signInWithGoogle, signOutAdmin } = useStoreConfig();
   const [signingIn, setSigningIn] = useState(false);
   const [copiedUid, setCopiedUid] = useState(false);
+  const [copiedHost, setCopiedHost] = useState(false);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isUnauthorizedDomain = Boolean(authError && authError.includes('auth/unauthorized-domain'));
+  const firebaseAuthSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
 
   const handleSignIn = async () => {
     setSigningIn(true);
@@ -26,6 +32,13 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({ onBackToStore }) =
     navigator.clipboard?.writeText(user.uid);
     setCopiedUid(true);
     setTimeout(() => setCopiedUid(false), 1800);
+  };
+
+  const handleCopyHost = () => {
+    if (!currentHostname) return;
+    navigator.clipboard?.writeText(currentHostname);
+    setCopiedHost(true);
+    setTimeout(() => setCopiedHost(false), 1800);
   };
 
   return (
@@ -114,9 +127,48 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({ onBackToStore }) =
           ) : (
             <div className="space-y-6">
               {authError && (
-                <div className="p-3.5 bg-[#FDF4F5] border border-[#713D43]/30 text-xs text-[#713D43] flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{authError}</span>
+                <div className="p-3.5 bg-[#FDF4F5] border border-[#713D43]/30 text-xs text-[#713D43] space-y-2.5">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div className="space-y-1 min-w-0">
+                      <p className="font-semibold">
+                        {isUnauthorizedDomain
+                          ? 'Domain Not Yet Authorized in Firebase Auth'
+                          : authError}
+                      </p>
+                      {isUnauthorizedDomain && (
+                        <p className="text-[#242321]/80 leading-relaxed">
+                          Firebase blocks Google Sign-In on domains not listed in your project&apos;s Authorized domains. Add the domain below in Firebase Console → Authentication → Settings → Authorized domains, then retry.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {isUnauthorizedDomain && currentHostname && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white border border-[#DED4C7]">
+                        <code className="text-[11px] font-mono text-[#242321] truncate">
+                          {currentHostname}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={handleCopyHost}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono border border-[#DED4C7] bg-[#FAF8F4] text-[#242321] hover:bg-[#F3EFE8] transition-colors cursor-pointer shrink-0"
+                        >
+                          {copiedHost ? <Check className="w-3 h-3 text-[#16A34A]" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedHost ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+                      <a
+                        href={firebaseAuthSettingsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#713D43] underline underline-offset-2 hover:text-[#242321] transition-colors"
+                      >
+                        <span>Open Firebase Authentication Settings</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 
