@@ -13,6 +13,7 @@ import {
   KeyRound,
   Mail,
   RefreshCw,
+  Activity,
 } from 'lucide-react';
 import { useStoreConfig } from '../../context/StoreConfigContext';
 import {
@@ -21,6 +22,7 @@ import {
   type AdminVaultStatus,
 } from '../../services/adminPasscodeClient';
 import { TraceLogo } from '../brand/TraceLogo';
+import { AdminLiveSyncPanel } from './AdminLiveSyncPanel';
 import firebaseConfig from '../../../firebase-applet-config.json';
 
 interface AdminAuthGateProps {
@@ -66,7 +68,8 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
 
-  // Layer 2: Firebase Identity state (Email/Password for Vercel + Google Sign-In)
+  // Layer 2: Firebase Identity & Live Sync Verifier mode state
+  const [step2Mode, setStep2Mode] = useState<'signin' | 'sync'>('signin');
   const [authTab, setAuthTab] = useState<'email' | 'google'>('email');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -216,7 +219,11 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
       </header>
 
       <main className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white border border-[#DED4C7] p-8 sm:p-10 space-y-7">
+        <div
+          className={`w-full bg-white border border-[#DED4C7] p-8 sm:p-10 space-y-7 transition-all ${
+            vaultUnlocked && step2Mode === 'sync' ? 'max-w-xl' : 'max-w-md'
+          }`}
+        >
           {/* Header & 2-Layer Progress */}
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -524,7 +531,7 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
               </button>
             </div>
           ) : (
-            /* LAYER 2: FIREBASE AUTH (EMAIL/PASSWORD FOR VERCEL + GOOGLE) */
+            /* LAYER 2: FIREBASE AUTH + PASSCODE-GATED LIVE SYNC VERIFIER */
             <div className="space-y-5">
               <div className="flex items-center justify-between px-3 py-2 bg-[#F0FDF4] border border-[#BBF7D0] text-xs text-[#15803D]">
                 <span className="flex items-center gap-1.5 font-medium">
@@ -540,39 +547,79 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
                 </button>
               </div>
 
-              {/* Dual Sign-In Mode Tabs */}
+              {/* Primary Step 2 Mode Switcher: Full Admin Sign-In vs. Live Sync Check */}
               <div
                 className="grid grid-cols-2 p-1 bg-[#F3EFE8] border border-[#DED4C7]"
                 role="tablist"
-                aria-label="Admin sign-in method"
+                aria-label="Admin workspace mode"
               >
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={authTab === 'email'}
-                  onClick={() => setAuthTab('email')}
-                  className={`py-2 text-xs font-body font-medium transition-colors cursor-pointer ${
-                    authTab === 'email'
+                  aria-selected={step2Mode === 'signin'}
+                  onClick={() => setStep2Mode('signin')}
+                  className={`py-2 px-2 text-xs font-body font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                    step2Mode === 'signin'
                       ? 'bg-[#242321] text-[#FAF8F4]'
                       : 'text-[#242321]/70 hover:text-[#242321]'
                   }`}
                 >
-                  Email &amp; Password
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Full Admin Sign-In</span>
                 </button>
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={authTab === 'google'}
-                  onClick={() => setAuthTab('google')}
-                  className={`py-2 text-xs font-body font-medium transition-colors cursor-pointer ${
-                    authTab === 'google'
+                  aria-selected={step2Mode === 'sync'}
+                  onClick={() => setStep2Mode('sync')}
+                  className={`py-2 px-2 text-xs font-body font-medium transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                    step2Mode === 'sync'
                       ? 'bg-[#242321] text-[#FAF8F4]'
                       : 'text-[#242321]/70 hover:text-[#242321]'
                   }`}
                 >
-                  Google Sign-In
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Live Sync Check</span>
                 </button>
               </div>
+
+              {step2Mode === 'sync' ? (
+                <AdminLiveSyncPanel onSwitchToFullSignIn={() => setStep2Mode('signin')} />
+              ) : (
+                <div className="space-y-5">
+                  {/* Dual Sign-In Method Sub-Tabs */}
+                  <div
+                    className="grid grid-cols-2 border border-[#DED4C7] bg-[#FAF8F4]"
+                    role="tablist"
+                    aria-label="Admin sign-in method"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={authTab === 'email'}
+                      onClick={() => setAuthTab('email')}
+                      className={`py-2 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer ${
+                        authTab === 'email'
+                          ? 'bg-white text-[#242321] font-semibold border-b-2 border-[#713D43]'
+                          : 'text-[#242321]/60 hover:text-[#242321]'
+                      }`}
+                    >
+                      Email &amp; Password
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={authTab === 'google'}
+                      onClick={() => setAuthTab('google')}
+                      className={`py-2 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer ${
+                        authTab === 'google'
+                          ? 'bg-white text-[#242321] font-semibold border-b-2 border-[#713D43]'
+                          : 'text-[#242321]/60 hover:text-[#242321]'
+                      }`}
+                    >
+                      Google Sign-In
+                    </button>
+                  </div>
 
               {authError && (
                 <div className="p-3.5 bg-[#FDF4F5] border border-[#713D43]/30 text-xs text-[#713D43] space-y-2.5">
@@ -694,8 +741,18 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
                     <span>{signingIn ? 'Verifying Credentials...' : 'Sign In with Authorized Google Account'}</span>
                   </button>
                   <p className="text-[11px] text-[#242321]/60 leading-relaxed">
-                    Requires <code className="font-mono">{currentHostname || 'your domain'}</code> to be listed under Firebase Authorized domains.
+                    Requires <code className="font-mono">{currentHostname || 'your domain'}</code> to be listed under Firebase Authorized domains. Blocked by Firebase Console MFA? Switch to{' '}
+                    <button
+                      type="button"
+                      onClick={() => setStep2Mode('sync')}
+                      className="text-[#713D43] underline underline-offset-2 hover:text-[#242321] cursor-pointer"
+                    >
+                      Live Sync Check
+                    </button>{' '}
+                    above to verify orders immediately.
                   </p>
+                </div>
+              )}
                 </div>
               )}
             </div>
