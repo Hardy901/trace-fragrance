@@ -16,11 +16,19 @@ export interface AdminVaultUnlockResult {
   needsSetup?: boolean;
 }
 
-async function parseJsonSafe<T>(response: Response): Promise<T> {
+function isJsonResponse(response: Response): boolean {
+  const contentType = response.headers.get('content-type') || '';
+  return contentType.toLowerCase().includes('application/json');
+}
+
+async function parseJsonSafe<T>(response: Response): Promise<{ ok: boolean; data: T }> {
+  if (!isJsonResponse(response)) {
+    return { ok: false, data: {} as T };
+  }
   try {
-    return (await response.json()) as T;
+    return { ok: true, data: (await response.json()) as T };
   } catch {
-    return {} as T;
+    return { ok: false, data: {} as T };
   }
 }
 
@@ -34,10 +42,13 @@ export async function fetchAdminVaultStatus(token: string | null): Promise<Admin
     headers,
     cache: 'no-store',
   });
-  if (!response.ok) {
-    throw new Error('Unable to reach the admin security vault API.');
+  const parsed = await parseJsonSafe<AdminVaultStatus>(response);
+  if (!response.ok || !parsed.ok || typeof parsed.data.configured !== 'boolean') {
+    throw new Error(
+      `Admin vault API unavailable (HTTP ${response.status}). Redeploy the latest build and verify /api/admin is active.`
+    );
   }
-  return parseJsonSafe<AdminVaultStatus>(response);
+  return parsed.data;
 }
 
 export async function setupAdminVaultPasscode(passcode: string): Promise<AdminVaultUnlockResult> {
@@ -47,11 +58,18 @@ export async function setupAdminVaultPasscode(passcode: string): Promise<AdminVa
     body: JSON.stringify({ passcode }),
     cache: 'no-store',
   });
-  const data = await parseJsonSafe<AdminVaultUnlockResult>(response);
+  const parsed = await parseJsonSafe<AdminVaultUnlockResult>(response);
+  if (!parsed.ok) {
+    return {
+      authenticated: false,
+      error: `Admin vault API returned an unexpected response (HTTP ${response.status}). Redeploy the latest build and try again.`,
+    };
+  }
+  const data = parsed.data;
   if (!response.ok) {
     return {
       authenticated: false,
-      error: data.error || 'Unable to initialize admin passcode vault.',
+      error: data.error || `Unable to initialize admin passcode vault (HTTP ${response.status}).`,
       retryAfterSec: data.retryAfterSec,
     };
   }
@@ -65,14 +83,31 @@ export async function verifyAdminVaultPasscode(passcode: string): Promise<AdminV
     body: JSON.stringify({ passcode }),
     cache: 'no-store',
   });
-  const data = await parseJsonSafe<AdminVaultUnlockResult>(response);
-  if (!response.ok) {
+  const parsed = await parseJsonSafe<AdminVaultUnlockResult>(response);
+  if (!parsed.ok) {
     return {
       authenticated: false,
-      error: data.error || 'Invalid admin passcode.',
+      error: `Admin vault API returned an unexpected response (HTTP ${response.status}). Redeploy the latest build and check Vercel Function logs.`,
+    };
+  }
+  const data = parsed.data;
+  if (!response.ok) {
+    const fallbackError =
+      response.status === 401
+        ? 'Invalid admin passcode.'
+        : `Admin vault API error (HTTP ${response.status}).`;
+    return {
+      authenticated: false,
+      error: data.error || fallbackError,
       remainingAttempts: data.remainingAttempts,
       retryAfterSec: data.retryAfterSec,
       needsSetup: data.needsSetup,
+    };
+  }
+  if (!data.authenticated || !data.token) {
+    return {
+      authenticated: false,
+      error: data.error || 'Admin vault returned an incomplete session response.',
     };
   }
   return data;

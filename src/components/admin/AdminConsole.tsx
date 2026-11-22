@@ -66,6 +66,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
   // Layer 1: Memory-only server-signed vault token (never written to localStorage/sessionStorage)
   const [vaultToken, setVaultToken] = useState<string | null>(null);
   const [vaultStatus, setVaultStatus] = useState<AdminVaultStatus | null>(null);
+  const [vaultApiError, setVaultApiError] = useState<string | null>(null);
   const [vaultLoading, setVaultLoading] = useState(true);
 
   const [orders, setOrders] = useState<OrderRecord[]>([]);
@@ -80,29 +81,27 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
 
   const vaultUnlocked = Boolean(vaultToken);
 
+  const loadVaultStatus = async () => {
+    setVaultLoading(true);
+    setVaultApiError(null);
+    try {
+      const status = await fetchAdminVaultStatus(null);
+      setVaultStatus(status);
+    } catch (err) {
+      setVaultStatus(null);
+      setVaultApiError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to reach the server-side admin passcode vault API.'
+      );
+    } finally {
+      setVaultLoading(false);
+    }
+  };
+
   // Check server-side vault configuration status on mount
   useEffect(() => {
-    let mounted = true;
-    fetchAdminVaultStatus(null)
-      .then(status => {
-        if (mounted) setVaultStatus(status);
-      })
-      .catch(() => {
-        if (mounted) {
-          setVaultStatus({
-            configured: true,
-            source: 'env',
-            authenticated: false,
-            expiresAt: null,
-          });
-        }
-      })
-      .finally(() => {
-        if (mounted) setVaultLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
+    void loadVaultStatus();
   }, []);
 
   const handleLockVault = async () => {
@@ -225,10 +224,22 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({ onBackToStore }) => 
       <AdminAuthGate
         onBackToStore={onBackToStore}
         vaultStatus={vaultStatus}
+        vaultApiError={vaultApiError}
         vaultLoading={vaultLoading}
         vaultUnlocked={vaultUnlocked}
         onVaultUnlocked={handleVaultUnlocked}
         onLockVault={handleLockVault}
+        onRetryVaultStatus={() => {
+          void loadVaultStatus();
+        }}
+        onVaultNeedsSetup={() => {
+          setVaultStatus({
+            configured: false,
+            source: 'unconfigured',
+            authenticated: false,
+            expiresAt: null,
+          });
+        }}
       />
     );
   }

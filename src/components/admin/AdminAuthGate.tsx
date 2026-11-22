@@ -26,19 +26,25 @@ import firebaseConfig from '../../../firebase-applet-config.json';
 interface AdminAuthGateProps {
   onBackToStore: () => void;
   vaultStatus: AdminVaultStatus | null;
+  vaultApiError: string | null;
   vaultLoading: boolean;
   vaultUnlocked: boolean;
   onVaultUnlocked: (token: string, source: 'env' | 'runtime') => void;
   onLockVault: () => void;
+  onRetryVaultStatus: () => void;
+  onVaultNeedsSetup: () => void;
 }
 
 export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
   onBackToStore,
   vaultStatus,
+  vaultApiError,
   vaultLoading,
   vaultUnlocked,
   onVaultUnlocked,
   onLockVault,
+  onRetryVaultStatus,
+  onVaultNeedsSetup,
 }) => {
   const {
     authReady,
@@ -120,6 +126,9 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
         setPasscode('');
         onVaultUnlocked(result.token, result.source || 'env');
       } else {
+        if (result.needsSetup) {
+          onVaultNeedsSetup();
+        }
         setVaultError(result.error || 'Invalid admin passcode.');
         if (typeof result.remainingAttempts === 'number') {
           setRemainingAttempts(result.remainingAttempts);
@@ -254,6 +263,28 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({
               <p className="text-xs font-mono text-[#242321]/60">
                 Connecting to server-side passcode vault...
               </p>
+            </div>
+          ) : !vaultUnlocked && vaultApiError ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-[#FDF4F5] border border-[#713D43]/30 text-xs text-[#713D43] space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-[#242321]">
+                      Admin Passcode Vault API Unreachable
+                    </p>
+                    <p className="leading-relaxed">{vaultApiError}</p>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onRetryVaultStatus}
+                className="w-full py-3 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.2em] uppercase hover:bg-[#713D43] transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Connection</span>
+              </button>
             </div>
           ) : !vaultUnlocked ? (
             isVaultUnconfigured ? (
