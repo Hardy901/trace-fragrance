@@ -13,7 +13,10 @@ import {
   DEFAULT_STORE_PRICING,
   deriveOrderTrackingKey,
   extractFirstName,
+  generateOrderNumber,
   normalizeCouponCode,
+  normalizeOrderNumber,
+  ORDER_NUMBER_REGEX,
   TRACKING_KEY_REGEX,
   validateCheckoutForm,
   validateCouponInput,
@@ -185,6 +188,169 @@ export async function createCustomerOrder(params: {
     await batch.commit();
     return { orderNumber: params.orderNumber, trackingKey };
   } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+export async function createAdminManualOrder(
+  params: {
+    orderNumber?: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    shippingAddress: string;
+    city: string;
+    pincode: string;
+    items: OrderItemSnapshot[];
+    discount: number;
+    couponCode: string;
+    shippingFee: number;
+    codFee: number;
+    paymentType: PaymentType;
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus;
+    paymentReference: string;
+    fulfillmentStatus: FulfillmentStatus;
+    trackingNumber: string;
+    adminNotes: string;
+  },
+  actorEmail: string
+): Promise<{ orderNumber: string; trackingKey: string; totalPrice: number }> {
+  const validationError = validateCheckoutForm({
+    name: params.customerName,
+    email: params.customerEmail,
+    phone: params.customerPhone,
+    address: params.shippingAddress,
+    city: params.city,
+    pincode: params.pincode,
+    paymentType: params.paymentType,
+    paymentMethod: params.paymentMethod,
+    paymentReference: params.paymentReference,
+    itemCount: params.items.length,
+  });
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const sanitizedItems: OrderItemSnapshot[] = params.items.slice(0, 20).map(item => ({
+    id: (item.id || 'custom-item').trim().slice(0, 80),
+    name: item.name.trim().slice(0, 120),
+    price: Math.max(1, Math.min(100000, Math.round(Number(item.price)))),
+    quantity: Math.max(1, Math.min(50, Math.round(Number(item.quantity)))),
+    volume: (item.volume || 'Standard').trim().slice(0, 80),
+    image: (item.image || '/assets/discovery-box-new.jpg').trim().slice(0, 200),
+  }));
+
+  if (sanitizedItems.some(item => !item.name || !Number.isFinite(item.price) || item.price < 1)) {
+    throw new Error('Every order item must have a valid product name and price.');
+  }
+
+  const subtotal = sanitizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  if (subtotal < 1 || subtotal > 500000) {
+    throw new Error('Order subtotal must be between ₹1 and ₹5,00,000.');
+  }
+
+  const discount = Math.max(0, Math.min(subtotal, Math.round(Number(params.discount) || 0)));
+  const shippingFee = Math.max(0, Math.min(5000, Math.round(Number(params.shippingFee) || 0)));
+  const codFee =
+    params.paymentType === 'cod'
+      ? Math.max(0, Math.min(1000, Math.round(Number(params.codFee) || 0)))
+      : 0;
+  const totalPrice = subtotal - discount + shippingFee + codFee;
+  if (totalPrice < 0 || totalPrice > 500000) {
+    throw new Error('Computed order total exceeds supported range (₹0 to ₹5,00,000).');
+  }
+
+  const rawCustomOrderNo = params.orderNumber ? normalizeOrderNumber(params.orderNumber) : '';
+  const orderNumber = rawCustomOrderNo || generateOrderNumber();
+  if (!ORDER_NUMBER_REGEX.test(orderNumber)) {
+    throw new Error('Order reference must match format TRC-XXXXXX-XXX (6–32 chars).');
+  }
+
+  const normalizedEmail = params.customerEmail.trim().toLowerCase().slice(0, 160);
+  const normalizedName = params.customerName.trim().slice(0, 120);
+  const normalizedCity = params.city.trim().slice(0, 80);
+  const normalizedCoupon = normalizeCouponCode(params.couponCode);
+  const resolvedPaymentMethod: PaymentMethod =
+    params.paymentType === 'cod' ? 'cod' : 'upi';
+  const cleanTrackingNumber = params.trackingNumber.trim().slice(0, 80);
+  const cleanPaymentRef = params.paymentReference.trim().slice(0, 80);
+  const cleanAdminNotes = params.adminNotes.trim().slice(0, 500);
+  const trackingKey = await deriveOrderTrackingKey(orderNumber, normalizedEmail);
+
+  const orderPayload = {
+    orderNumber,
+    customerName: normalizedName,
+    customerEmail: normalizedEmail,
+    customerPhone: params.customerPhone.trim().slice(0, 24),
+    shippingAddress: params.shippingAddress.trim().slice(0, 300),
+    city: normalizedCity,
+    pincode: params.pincode.trim().slice(0, 6),
+    items: sanitizedItems,
+    subtotal,
+    discount,
+    couponCode: normalizedCoupon,
+    shippingFee,
+    codFee,
+    totalPrice,
+    paymentType: params.paymentType,
+    paymentMethod: resolvedPaymentMethod,
+    paymentStatus: params.paymentStatus,
+    paymentReference: cleanPaymentRef,
+    fulfillmentStatus: params.fulfillmentStatus,
+    trackingNumber: cleanTrackingNumber,
+    trackingKey,
+    adminNotes: cleanAdminNotes,
+    updatedBy: actorEmail,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const trackingPayload = {
+    trackingKey,
+    orderNumber,
+    customerFirstName: extractFirstName(normalizedName),
+    city: normalizedCity,
+    items: sanitizedItems,
+    subtotal,
+    discount,
+    couponCode: normalizedCoupon,
+    shippingFee,
+    codFee,
+    totalPrice,
+    paymentType: params.paymentType,
+    paymentMethod: resolvedPaymentMethod,
+    paymentStatus: params.paymentStatus,
+    fulfillmentStatus: params.fulfillmentStatus,
+    trackingNumber: cleanTrackingNumber,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const path = `orders/${orderNumber}`;
+  try {
+    const existingSnap = await getDoc(doc(db, 'orders', orderNumber));
+    if (existingSnap.exists()) {
+      throw new Error(`Order reference "${orderNumber}" already exists. Leave blank to auto-generate.`);
+    }
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'orders', orderNumber), orderPayload);
+    batch.set(doc(db, 'order_tracking', trackingKey), trackingPayload);
+    await batch.commit();
+
+    await logAdminAudit(
+      'order_created',
+      orderNumber,
+      `Created manual ${params.paymentType === 'prepaid' ? 'UPI' : 'COD'} order ${orderNumber} for ${normalizedName} (${normalizedCity}, ₹${totalPrice}, ${params.fulfillmentStatus})`
+    );
+
+    return { orderNumber, trackingKey, totalPrice };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('already exists')) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.CREATE, path);
   }
 }

@@ -11,6 +11,8 @@ import {
   AlertCircle,
   Save,
   Trash2,
+  Plus,
+  PackageCheck,
 } from 'lucide-react';
 import {
   formatINR,
@@ -22,6 +24,7 @@ import {
   type PaymentStatus,
 } from '../../utils/storeLogic';
 import { deleteOrderRecord, updateOrderRecord } from '../../services/firestoreService';
+import { AddOrderModal } from './AddOrderModal';
 
 interface OrdersManagerProps {
   orders: OrderRecord[];
@@ -91,6 +94,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showAddOrderModal, setShowAddOrderModal] = useState(false);
   const [ledgerNotice, setLedgerNotice] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
@@ -283,7 +287,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
             {formatINR(analytics.paidBeforeRevenue)}
           </p>
           <p className="text-xs font-body text-[#242321]/60">
-            {analytics.prepaidOrdersCount} UPI / Card orders
+            {analytics.prepaidOrdersCount} UPI / Prepaid orders
           </p>
         </div>
 
@@ -380,6 +384,15 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAddOrderModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#242321] text-[#FAF8F4] text-xs font-body font-semibold tracking-wider uppercase hover:bg-[#713D43] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Order / UPI</span>
+          </button>
         </div>
       </div>
 
@@ -392,15 +405,25 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
             ))}
           </div>
         ) : filteredOrders.length === 0 ? (
-          <div className="py-16 px-6 text-center space-y-2">
+          <div className="py-16 px-6 text-center space-y-3">
             <p className="font-editorial text-2xl text-[#242321]">
               {orders.length === 0 ? 'No Orders Received Yet' : 'No Orders Match Current Filters'}
             </p>
             <p className="text-xs font-body text-[#242321]/65 max-w-md mx-auto">
               {orders.length === 0
-                ? 'New Cash on Delivery and Prepaid orders placed on your TRACE storefront will appear here in real time.'
+                ? 'New Cash on Delivery storefront orders and manual WhatsApp UPI orders you add will appear here in real time.'
                 : 'Try adjusting the COD/Prepaid filter or clearing your search query.'}
             </p>
+            {orders.length === 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAddOrderModal(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#242321] text-[#FAF8F4] text-xs font-body font-semibold tracking-wider uppercase hover:bg-[#713D43] transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add First UPI / Manual Order</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -598,6 +621,26 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
                     <span>Confirm Order</span>
                   </button>
                 )}
+                {selectedOrder.fulfillmentStatus !== 'delivered' &&
+                  selectedOrder.fulfillmentStatus !== 'cancelled' && (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() =>
+                        handleQuickPaymentAction(
+                          selectedOrder.paymentType === 'cod' &&
+                            selectedOrder.paymentStatus === 'pending_cod'
+                            ? 'cod_collected'
+                            : editPaymentStatus,
+                          'delivered'
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#15803D] bg-white text-[#15803D] text-xs font-body font-medium hover:bg-[#15803D] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <PackageCheck className="w-3.5 h-3.5" />
+                      <span>Mark Delivered</span>
+                    </button>
+                  )}
               </div>
 
               {/* Customer Shipping PII */}
@@ -822,6 +865,19 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Add Manual / WhatsApp UPI Order Modal */}
+      {showAddOrderModal && (
+        <AddOrderModal
+          actorEmail={actorEmail}
+          onClose={() => setShowAddOrderModal(false)}
+          onCreated={result => {
+            setShowAddOrderModal(false);
+            setLedgerNotice(
+              `Created order ${result.orderNumber} for ${result.customerName} (${formatINR(result.totalPrice)}). Synced live to Firestore & customer tracking.`
+            );
+          }}
+        />
       )}
     </div>
   );

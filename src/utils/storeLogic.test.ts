@@ -4,6 +4,9 @@ import {
   DEFAULT_COUPONS,
   DEFAULT_STORE_PRICING,
   TRACKING_KEY_REGEX,
+  WHATSAPP_UPI_PHONE_E164,
+  buildWhatsAppUpiOrderMessage,
+  buildWhatsAppUpiOrderUrl,
   calculateCartTotals,
   calculateCouponDiscount,
   computeDiscountedPrice,
@@ -332,5 +335,34 @@ test('deriveOrderTrackingKey produces deterministic 40-char hex key insensitive 
   assert.equal(normalizeOrderNumber(' trc-998877-xyz! '), 'TRC-998877-XYZ');
   assert.equal(extractFirstName('  Aarav Sharma '), 'Aarav');
   assert.equal(extractFirstName('   '), 'Guest');
+});
+
+test('buildWhatsAppUpiOrderUrl encodes TRACE WhatsApp UPI number, items, discount, and customer details', () => {
+  const payload = {
+    items: [{ name: 'TRACE ELIXIR DISCOVERY SET', quantity: 2, price: 799 }],
+    subtotal: 1598,
+    discount: 200,
+    couponCode: 'TRACE2026',
+    shippingFee: 0,
+    totalPrice: 1398,
+    customerName: 'Aarav Sharma',
+    customerPhone: '+91 98765 43210',
+    customerEmail: 'aarav@example.com',
+    shippingAddress: '402 Lotus Residency',
+    city: 'Bengaluru',
+    pincode: '560038',
+  };
+
+  const message = buildWhatsAppUpiOrderMessage(payload);
+  assert.ok(message.includes('TRACE ELIXIR DISCOVERY SET × 2'));
+  assert.ok(message.includes('TRACE2026'));
+  assert.ok(message.includes('₹1,398'));
+  assert.ok(message.includes('Aarav Sharma'));
+  assert.ok(message.includes('402 Lotus Residency, Bengaluru, PIN 560038'));
+
+  const url = buildWhatsAppUpiOrderUrl(payload);
+  assert.ok(url.startsWith(`https://wa.me/${WHATSAPP_UPI_PHONE_E164}?text=`));
+  assert.equal(WHATSAPP_UPI_PHONE_E164, '919315671544');
+  assert.ok(decodeURIComponent(url.split('?text=')[1]).includes('Total Payable via UPI: ₹1,398'));
 });
 

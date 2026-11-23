@@ -1,9 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { X, CheckCircle2, Lock, CreditCard, Banknote, AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  X,
+  CheckCircle2,
+  Lock,
+  Banknote,
+  AlertCircle,
+  MessageCircle,
+  Copy,
+  Check,
+  ExternalLink,
+} from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useStoreConfig } from '../../context/StoreConfigContext';
 import { createCustomerOrder } from '../../services/firestoreService';
 import {
+  WHATSAPP_UPI_DISPLAY_PHONE,
+  buildWhatsAppUpiOrderMessage,
+  buildWhatsAppUpiOrderUrl,
   formatINR,
   generateOrderNumber,
   saveCustomerOrderRef,
@@ -36,9 +49,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [copiedMessage, setCopiedMessage] = useState(false);
 
-  const defaultPaymentType: PaymentType = pricing.prepaidEnabled ? 'prepaid' : 'cod';
-  const defaultPaymentMethod: PaymentMethod = pricing.prepaidEnabled ? 'upi' : 'cod';
+  // Default to Cash on Delivery whenever COD is enabled; fall back to WhatsApp UPI if COD is disabled.
+  const defaultPaymentType: PaymentType = pricing.codEnabled ? 'cod' : 'prepaid';
+  const defaultPaymentMethod: PaymentMethod = pricing.codEnabled ? 'cod' : 'upi';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -49,8 +64,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     pincode: '',
     paymentType: defaultPaymentType as PaymentType,
     paymentMethod: defaultPaymentMethod as PaymentMethod,
-    paymentReference: '',
   });
+
   const [confirmedOrder, setConfirmedOrder] = useState<{
     orderNumber: string;
     totalPrice: number;
@@ -66,22 +81,83 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   }, [pricing.codEnabled, pricing.prepaidEnabled, formData.paymentType]);
 
+  const totals = computeTotalsForPayment(formData.paymentType);
+  const isWhatsAppUpi = formData.paymentType === 'prepaid';
+
+  const whatsAppPayload = useMemo(
+    () => ({
+      items: items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        volume: item.volume,
+      })),
+      subtotal: totals.subtotal,
+      discount: totals.discount,
+      couponCode: couponCode || '',
+      shippingFee: totals.shippingFee,
+      totalPrice: totals.totalPrice,
+      customerName: formData.name,
+      customerEmail: formData.email,
+      customerPhone: formData.phone,
+      shippingAddress: formData.address,
+      city: formData.city,
+      pincode: formData.pincode,
+    }),
+    [
+      items,
+      totals.subtotal,
+      totals.discount,
+      totals.shippingFee,
+      totals.totalPrice,
+      couponCode,
+      formData.name,
+      formData.email,
+      formData.phone,
+      formData.address,
+      formData.city,
+      formData.pincode,
+    ]
+  );
+
+  const whatsAppMessage = useMemo(
+    () => buildWhatsAppUpiOrderMessage(whatsAppPayload),
+    [whatsAppPayload]
+  );
+  const whatsAppUrl = useMemo(
+    () => buildWhatsAppUpiOrderUrl(whatsAppPayload),
+    [whatsAppPayload]
+  );
+
   if (!isCheckoutOpen) return null;
 
-  const totals = computeTotalsForPayment(formData.paymentType);
-
   const selectPayment = (paymentType: PaymentType, paymentMethod: PaymentMethod) => {
+    setSubmitError(null);
     setFormData(prev => ({
       ...prev,
       paymentType,
       paymentMethod,
-      paymentReference: paymentType === 'cod' ? '' : prev.paymentReference,
     }));
+  };
+
+  const handleCopyWhatsAppMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(whatsAppMessage);
+      setCopiedMessage(true);
+      setTimeout(() => setCopiedMessage(false), 2200);
+    } catch {
+      // Fallback ignored if clipboard blocked in iframe
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) return;
+
+    // UPI orders are placed directly via the WhatsApp prompt link rather than an automated gateway.
+    if (formData.paymentType !== 'cod') {
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -110,9 +186,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         shippingFee: totals.shippingFee,
         codFee: totals.codFee,
         totalPrice: totals.totalPrice,
-        paymentType: formData.paymentType,
-        paymentMethod: formData.paymentMethod,
-        paymentReference: formData.paymentReference,
+        paymentType: 'cod',
+        paymentMethod: 'cod',
+        paymentReference: '',
       });
 
       const savedRef: SavedCustomerOrderRef = {
@@ -126,8 +202,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setConfirmedOrder({
         orderNumber,
         totalPrice: totals.totalPrice,
-        paymentType: formData.paymentType,
-        paymentMethod: formData.paymentMethod,
+        paymentType: 'cod',
+        paymentMethod: 'cod',
       });
       setStep('success');
       clearCart();
@@ -199,13 +275,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                 <div className="space-y-3 font-body text-xs">
                   <div>
-                    <label htmlFor="checkout-name" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
+                    <label
+                      htmlFor="checkout-name"
+                      className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1"
+                    >
                       Full Name
                     </label>
                     <input
                       id="checkout-name"
                       type="text"
-                      required
+                      required={!isWhatsAppUpi}
                       minLength={2}
                       maxLength={120}
                       placeholder="Aarav Sharma"
@@ -217,13 +296,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="checkout-email" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
+                      <label
+                        htmlFor="checkout-email"
+                        className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1"
+                      >
                         Email Address
                       </label>
                       <input
                         id="checkout-email"
                         type="email"
-                        required
+                        required={!isWhatsAppUpi}
                         maxLength={160}
                         placeholder="you@example.com"
                         value={formData.email}
@@ -232,13 +314,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label htmlFor="checkout-phone" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
+                      <label
+                        htmlFor="checkout-phone"
+                        className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1"
+                      >
                         Phone (Mobile)
                       </label>
                       <input
                         id="checkout-phone"
                         type="tel"
-                        required
+                        required={!isWhatsAppUpi}
                         minLength={8}
                         maxLength={24}
                         placeholder="+91 98765 43210"
@@ -250,13 +335,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
 
                   <div>
-                    <label htmlFor="checkout-address" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
+                    <label
+                      htmlFor="checkout-address"
+                      className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1"
+                    >
                       Delivery Address
                     </label>
                     <input
                       id="checkout-address"
                       type="text"
-                      required
+                      required={!isWhatsAppUpi}
                       minLength={5}
                       maxLength={300}
                       placeholder="Flat 402, Lotus Residency, Indiranagar"
@@ -268,13 +356,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="checkout-city" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
+                      <label
+                        htmlFor="checkout-city"
+                        className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1"
+                      >
                         City
                       </label>
                       <input
                         id="checkout-city"
                         type="text"
-                        required
+                        required={!isWhatsAppUpi}
                         minLength={2}
                         maxLength={80}
                         placeholder="Bengaluru"
@@ -284,13 +375,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label htmlFor="checkout-pincode" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
+                      <label
+                        htmlFor="checkout-pincode"
+                        className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1"
+                      >
                         PIN Code (6 Digits)
                       </label>
                       <input
                         id="checkout-pincode"
                         type="text"
-                        required
+                        required={!isWhatsAppUpi}
                         pattern="[0-9]{6}"
                         maxLength={6}
                         placeholder="560038"
@@ -307,59 +401,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 </div>
 
-                {/* Payment Method: Paid Before (Prepaid) vs Cash on Delivery (COD) */}
+                {/* Payment Method: Cash on Delivery (COD) vs UPI via WhatsApp */}
                 <h3 className="font-editorial text-xl text-[#242321] tracking-wide border-b border-[#DED4C7] pb-2 pt-2">
                   2. Payment Method
                 </h3>
-                <div className="space-y-2 text-xs font-body">
-                  {pricing.prepaidEnabled && (
-                    <>
-                      <label className="flex items-center gap-3 p-3 border border-[#DED4C7] bg-white cursor-pointer hover:border-[#242321] transition-colors">
-                        <input
-                          type="radio"
-                          name="payment"
-                          checked={
-                            formData.paymentType === 'prepaid' && formData.paymentMethod === 'upi'
-                          }
-                          onChange={() => selectPayment('prepaid', 'upi')}
-                          className="accent-[#713D43]"
-                        />
-                        <div className="flex-1">
-                          <span className="font-medium text-[#242321] block">
-                            Paid Before — Instant UPI / QR
-                          </span>
-                          <span className="text-[11px] text-[#242321]/60">
-                            Google Pay, PhonePe, Paytm, BHIM
-                          </span>
-                        </div>
-                        <CreditCard className="w-4 h-4 text-[#713D43]" />
-                      </label>
-
-                      <label className="flex items-center gap-3 p-3 border border-[#DED4C7] bg-white cursor-pointer hover:border-[#242321] transition-colors">
-                        <input
-                          type="radio"
-                          name="payment"
-                          checked={
-                            formData.paymentType === 'prepaid' && formData.paymentMethod === 'cards'
-                          }
-                          onChange={() => selectPayment('prepaid', 'cards')}
-                          className="accent-[#713D43]"
-                        />
-                        <div className="flex-1">
-                          <span className="font-medium text-[#242321] block">
-                            Paid Before — Credit / Debit Card
-                          </span>
-                          <span className="text-[11px] text-[#242321]/60">
-                            Visa, Mastercard, RuPay, Amex
-                          </span>
-                        </div>
-                        <CreditCard className="w-4 h-4 text-[#713D43]" />
-                      </label>
-                    </>
-                  )}
-
+                <div className="space-y-2.5 text-xs font-body">
                   {pricing.codEnabled && (
-                    <label className="flex items-center gap-3 p-3 border border-[#DED4C7] bg-white cursor-pointer hover:border-[#242321] transition-colors">
+                    <label
+                      className={`flex items-center gap-3 p-3 border bg-white cursor-pointer transition-colors ${
+                        formData.paymentType === 'cod'
+                          ? 'border-[#242321]'
+                          : 'border-[#DED4C7] hover:border-[#242321]'
+                      }`}
+                    >
                       <input
                         type="radio"
                         name="payment"
@@ -374,29 +428,90 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <span className="text-[11px] text-[#242321]/60">
                           {pricing.codFee > 0
                             ? `Pay courier on arrival (+${formatINR(pricing.codFee)} COD fee)`
-                            : 'Pay cash or UPI upon delivery · No extra fee'}
+                            : 'Pay cash or UPI upon delivery · Instant confirmation'}
                         </span>
                       </div>
-                      <Banknote className="w-4 h-4 text-[#B45309]" />
+                      <Banknote className="w-4 h-4 text-[#B45309] shrink-0" />
                     </label>
                   )}
 
-                  {formData.paymentType === 'prepaid' && (
-                    <div className="pt-2">
-                      <label htmlFor="checkout-utr" className="block text-[11px] font-mono uppercase tracking-wider text-[#242321]/65 mb-1">
-                        UPI UTR / Transaction Reference (Optional)
-                      </label>
+                  {pricing.prepaidEnabled && (
+                    <label
+                      className={`flex items-center gap-3 p-3 border bg-white cursor-pointer transition-colors ${
+                        isWhatsAppUpi
+                          ? 'border-[#15803D]'
+                          : 'border-[#DED4C7] hover:border-[#242321]'
+                      }`}
+                    >
                       <input
-                        id="checkout-utr"
-                        type="text"
-                        maxLength={80}
-                        placeholder="e.g. UTR432198765432"
-                        value={formData.paymentReference}
-                        onChange={e =>
-                          setFormData({ ...formData, paymentReference: e.target.value })
-                        }
-                        className="w-full px-3 py-2 bg-white border border-[#DED4C7] font-mono text-xs text-[#242321] focus:border-[#242321] focus:outline-none"
+                        type="radio"
+                        name="payment"
+                        checked={isWhatsAppUpi}
+                        onChange={() => selectPayment('prepaid', 'upi')}
+                        className="accent-[#15803D]"
                       />
+                      <div className="flex-1">
+                        <span className="font-medium text-[#242321] block">
+                          UPI Payment — Order on WhatsApp
+                        </span>
+                        <span className="text-[11px] text-[#242321]/60">
+                          Message <span className="font-mono text-[#242321]">{WHATSAPP_UPI_DISPLAY_PHONE}</span> on WhatsApp to place your UPI order
+                        </span>
+                      </div>
+                      <MessageCircle className="w-4 h-4 text-[#15803D] shrink-0" />
+                    </label>
+                  )}
+
+                  {isWhatsAppUpi && (
+                    <div className="p-4 bg-[#F0FDF4] border border-[#BBF7D0] space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-[#166534]">
+                          Direct WhatsApp UPI Concierge · {WHATSAPP_UPI_DISPLAY_PHONE}
+                        </p>
+                        <p className="text-[11px] text-[#166534]/85 leading-relaxed">
+                          Message our official WhatsApp number to complete your UPI payment directly. Your bag items, total ({formatINR(totals.totalPrice)}), and any shipping details typed above are pre-filled automatically.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a
+                          href={whatsAppUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#15803D] text-white text-[11px] font-semibold uppercase tracking-wider hover:bg-[#166534] transition-colors"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>Message on WhatsApp</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={handleCopyWhatsAppMessage}
+                          className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-white border border-[#BBF7D0] text-[11px] font-medium text-[#166534] hover:bg-[#DCFCE7] transition-colors cursor-pointer"
+                        >
+                          {copiedMessage ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Copied Order Text</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy Order Text</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <details className="text-[11px] text-[#166534]/80">
+                        <summary className="cursor-pointer font-mono uppercase tracking-wider text-[10px] hover:text-[#166534]">
+                          Preview Pre-Filled WhatsApp Message
+                        </summary>
+                        <pre className="mt-2 p-2.5 bg-white border border-[#BBF7D0] text-[11px] font-mono text-[#242321] whitespace-pre-wrap break-words leading-relaxed">
+                          {whatsAppMessage}
+                        </pre>
+                      </details>
                     </div>
                   )}
                 </div>
@@ -463,9 +578,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       <div>
                         <span className="font-editorial text-lg block">Total Amount</span>
                         <span className="text-[10px] font-mono text-[#713D43] block">
-                          {formData.paymentType === 'cod'
-                            ? 'Cash on Delivery'
-                            : `Paid Before (${formData.paymentMethod.toUpperCase()})`}
+                          {isWhatsAppUpi
+                            ? `UPI via WhatsApp (${WHATSAPP_UPI_DISPLAY_PHONE})`
+                            : 'Cash on Delivery'}
                         </span>
                       </div>
                       <span className="font-mono tabular-nums text-base font-semibold text-[#242321]">
@@ -476,20 +591,37 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
 
                 <div className="mt-6 space-y-3">
-                  <button
-                    type="submit"
-                    disabled={submitting || items.length === 0}
-                    className="w-full py-4 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.22em] uppercase hover:bg-[#713D43] transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {submitting
-                      ? 'Submitting Order...'
-                      : formData.paymentType === 'cod'
-                        ? `Confirm COD Order · ${formatINR(totals.totalPrice)}`
-                        : `Confirm Prepaid Order · ${formatINR(totals.totalPrice)}`}
-                  </button>
-                  <p className="text-[11px] text-[#242321]/60 text-center font-body">
-                    Your order is logged instantly with TRACE fulfillment concierge.
-                  </p>
+                  {isWhatsAppUpi ? (
+                    <>
+                      <a
+                        href={whatsAppUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-4 px-4 bg-[#15803D] text-[#FAF8F4] font-body text-xs tracking-[0.18em] uppercase hover:bg-[#166534] transition-colors flex items-center justify-center gap-2 text-center"
+                      >
+                        <MessageCircle className="w-4 h-4 shrink-0" />
+                        <span>Order via WhatsApp UPI · {formatINR(totals.totalPrice)}</span>
+                      </a>
+                      <p className="text-[11px] text-[#242321]/65 text-center font-body leading-relaxed">
+                        Opens WhatsApp chat with <span className="font-mono text-[#242321]">{WHATSAPP_UPI_DISPLAY_PHONE}</span> pre-filled with your bag &amp; details. Our concierge will send your UPI QR and live order tracking ID.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="submit"
+                        disabled={submitting || items.length === 0}
+                        className="w-full py-4 bg-[#242321] text-[#FAF8F4] font-body text-xs tracking-[0.22em] uppercase hover:bg-[#713D43] transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {submitting
+                          ? 'Submitting Order...'
+                          : `Confirm COD Order · ${formatINR(totals.totalPrice)}`}
+                      </button>
+                      <p className="text-[11px] text-[#242321]/60 text-center font-body">
+                        Your COD order is logged instantly with TRACE fulfillment concierge.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -522,11 +654,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-[#242321]/70">Payment Mode</span>
-                <span className="font-mono text-[#242321]">
-                  {confirmedOrder?.paymentType === 'cod'
-                    ? 'Cash on Delivery (COD)'
-                    : `Paid Before (${confirmedOrder?.paymentMethod.toUpperCase()})`}
-                </span>
+                <span className="font-mono text-[#242321]">Cash on Delivery (COD)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#242321]/70">Total Amount</span>

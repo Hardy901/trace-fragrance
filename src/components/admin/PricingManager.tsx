@@ -94,7 +94,7 @@ export const PricingManager: React.FC<PricingManagerProps> = ({
           <p className="text-xs font-body text-[#242321]/65">
             Shipping: {formatINR(draft.shippingFee)} · Free over {formatINR(draft.freeShippingThreshold)} ·{' '}
             COD {draft.codEnabled ? (draft.codFee > 0 ? `Enabled (+${formatINR(draft.codFee)})` : 'Enabled (Free)') : 'Disabled'} ·{' '}
-            Prepaid {draft.prepaidEnabled ? 'Enabled' : 'Disabled'}
+            WhatsApp UPI {draft.prepaidEnabled ? 'Enabled' : 'Disabled'}
           </p>
         </div>
 
@@ -325,8 +325,12 @@ export const PricingManager: React.FC<PricingManagerProps> = ({
 
               <label className="flex items-center justify-between p-3 bg-[#FAF8F4] border border-[#DED4C7] cursor-pointer">
                 <div>
-                  <span className="font-medium text-[#242321] block">Accept Paid Before (UPI / Cards)</span>
-                  <span className="text-[#242321]/60">Prepaid checkout with instant transaction reference capture</span>
+                  <span className="font-medium text-[#242321] block">
+                    Enable UPI Orders via WhatsApp (+91 93156 71544)
+                  </span>
+                  <span className="text-[#242321]/60">
+                    Shows a direct WhatsApp UPI order button at checkout (no payment gateway required)
+                  </span>
                 </div>
                 <input
                   type="checkbox"

@@ -59,10 +59,30 @@ test('Order creation enforces strict initial state, arithmetic total, and shadow
   assert.match(rulesContent, /data\.createdAt == request\.time/);
 });
 
-test('Audit logs are strictly append-only, admin-restricted, and support order_deleted', () => {
+test('Audit logs are strictly append-only, admin-restricted, and support order_created & order_deleted', () => {
   const auditBlock = rulesContent.slice(rulesContent.indexOf('match /audit_logs/{logId}'));
   assert.match(auditBlock, /allow update: if false;/);
   assert.match(auditBlock, /allow delete: if false;/);
   assert.match(auditBlock, /allow list: if isVerifiedUser\(\) && isAdmin\(\);/);
+  assert.match(rulesContent, /'order_created'/);
   assert.match(rulesContent, /'order_deleted'/);
+});
+
+test('Admin manual order creation enforces verified admin email attribution and tracking atomicity', () => {
+  const ordersBlock = rulesContent.slice(
+    rulesContent.indexOf('match /orders/{orderId}'),
+    rulesContent.indexOf('match /order_tracking/{trackingKey}')
+  );
+  assert.match(
+    ordersBlock,
+    /allow create:[\s\S]*incoming\(\)\.updatedBy == request\.auth\.token\.email\s*&& isAdmin\(\)/
+  );
+  const trackingBlock = rulesContent.slice(
+    rulesContent.indexOf('match /order_tracking/{trackingKey}'),
+    rulesContent.indexOf('match /admins/{adminUid}')
+  );
+  assert.match(
+    trackingBlock,
+    /exists\(\/databases\/\$\(database\)\/documents\/orders\/\$\(incoming\(\)\.orderNumber\)\)\s*\|\|\s*existsAfter\(\/databases\/\$\(database\)\/documents\/orders\/\$\(incoming\(\)\.orderNumber\)\)/
+  );
 });

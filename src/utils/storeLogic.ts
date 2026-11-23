@@ -22,6 +22,7 @@ export type AuditAction =
   | 'coupon_created'
   | 'coupon_updated'
   | 'coupon_deleted'
+  | 'order_created'
   | 'order_updated'
   | 'order_deleted'
   | 'admin_added'
@@ -148,6 +149,75 @@ export const FEATURED_COUPON_REGEX = /^[A-Z0-9_-]{0,32}$/;
 export const PINCODE_REGEX = /^[0-9]{6}$/;
 export const ORDER_NUMBER_REGEX = /^TRC-[A-Z0-9-]{2,28}$/;
 export const VALID_ID_REGEX = /^[a-zA-Z0-9_-]{1,128}$/;
+export const WHATSAPP_UPI_PHONE_E164 = '919315671544';
+export const WHATSAPP_UPI_DISPLAY_PHONE = '+91 93156 71544';
+
+export interface WhatsAppUpiOrderInput {
+  items: Array<{ name: string; quantity: number; price: number; volume?: string }>;
+  subtotal: number;
+  discount: number;
+  couponCode?: string;
+  shippingFee: number;
+  totalPrice: number;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  shippingAddress?: string;
+  city?: string;
+  pincode?: string;
+}
+
+export function buildWhatsAppUpiOrderMessage(input: WhatsAppUpiOrderInput): string {
+  const lines: string[] = [
+    'Hello TRACE Team,',
+    'I would like to place a UPI order for:',
+    '',
+  ];
+
+  for (const item of input.items) {
+    const qty = Math.max(1, Math.round(item.quantity));
+    const lineTotal = Math.max(0, Math.round(item.price * qty));
+    lines.push(`• ${item.name} × ${qty} — ${formatINR(lineTotal)}`);
+  }
+
+  lines.push('');
+  lines.push(`Subtotal: ${formatINR(input.subtotal)}`);
+  if (input.discount > 0) {
+    const codeLabel = input.couponCode ? ` (${input.couponCode})` : '';
+    lines.push(`Coupon Discount${codeLabel}: -${formatINR(input.discount)}`);
+  }
+  lines.push(
+    `Express Shipping: ${input.shippingFee === 0 ? 'Complimentary' : formatINR(input.shippingFee)}`
+  );
+  lines.push(`Total Payable via UPI: ${formatINR(input.totalPrice)}`);
+
+  const name = (input.customerName || '').trim();
+  const phone = (input.customerPhone || '').trim();
+  const email = (input.customerEmail || '').trim();
+  const address = (input.shippingAddress || '').trim();
+  const city = (input.city || '').trim();
+  const pincode = (input.pincode || '').trim();
+
+  lines.push('');
+  lines.push('Delivery Details:');
+  lines.push(`Name: ${name || '[Please add your full name]'}`);
+  lines.push(`Phone: ${phone || '[Please add your mobile number]'}`);
+  lines.push(`Email: ${email || '[Please add your email]'}`);
+
+  const fullAddressParts = [address, city, pincode ? `PIN ${pincode}` : ''].filter(Boolean);
+  lines.push(
+    `Address: ${fullAddressParts.length > 0 ? fullAddressParts.join(', ') : '[Please add delivery address, city & 6-digit PIN]'}`
+  );
+  lines.push('');
+  lines.push('Please share your UPI ID / QR so I can complete payment.');
+
+  return lines.join('\n');
+}
+
+export function buildWhatsAppUpiOrderUrl(input: WhatsAppUpiOrderInput): string {
+  const message = buildWhatsAppUpiOrderMessage(input);
+  return `https://wa.me/${WHATSAPP_UPI_PHONE_E164}?text=${encodeURIComponent(message)}`;
+}
 
 export const DEFAULT_STORE_PRICING: StorePricingConfig = {
   discoverySetPrice: 799,

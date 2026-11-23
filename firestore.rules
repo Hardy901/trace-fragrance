@@ -479,6 +479,7 @@ service cloud.firestore {
           'coupon_created',
           'coupon_updated',
           'coupon_deleted',
+          'order_created',
           'order_updated',
           'order_deleted',
           'admin_added',
@@ -572,9 +573,16 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow get: if isVerifiedUser() && isValidOrderNumber(orderId) && isAdmin();
       allow list: if isVerifiedUser() && isAdmin();
-      allow create: if isValidOrderNumber(orderId)
-        && isValidOrder(incoming(), orderId)
-        && isValidInitialOrderState(incoming());
+      allow create: if (isValidOrderNumber(orderId)
+          && isValidOrder(incoming(), orderId)
+          && isValidInitialOrderState(incoming()))
+        || (isVerifiedUser()
+          && isValidOrderNumber(orderId)
+          && isValidOrder(incoming(), orderId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && incoming().updatedBy == request.auth.token.email
+          && isAdmin());
       allow update: if isVerifiedUser()
         && isValidOrderNumber(orderId)
         && isValidOrder(incoming(), orderId)
@@ -626,7 +634,8 @@ service cloud.firestore {
           && isValidTrackingKey(trackingKey)
           && isValidOrderTracking(incoming(), trackingKey)
           && incoming().updatedAt == request.time
-          && exists(/databases/$(database)/documents/orders/$(incoming().orderNumber))
+          && (exists(/databases/$(database)/documents/orders/$(incoming().orderNumber))
+              || existsAfter(/databases/$(database)/documents/orders/$(incoming().orderNumber)))
           && isAdmin());
       allow update: if isVerifiedUser()
         && isValidTrackingKey(trackingKey)

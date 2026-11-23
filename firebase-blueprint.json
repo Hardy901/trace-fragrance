@@ -39,7 +39,7 @@
         },
         "prepaidEnabled": {
           "type": "boolean",
-          "description": "Whether Prepaid (UPI / Card) checkout is enabled."
+          "description": "Whether UPI (WhatsApp Concierge) prepaid ordering is enabled at checkout."
         },
         "featuredCouponCode": {
           "type": "string",
@@ -533,6 +533,7 @@
             "coupon_created",
             "coupon_updated",
             "coupon_deleted",
+            "order_created",
             "order_updated",
             "order_deleted",
             "admin_added",
