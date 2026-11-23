@@ -260,9 +260,9 @@ export const AddOrderModal: React.FC<AddOrderModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 text-xs font-body">
           {error && (
-            <div className="p-3.5 bg-[#FDF4F5] border border-[#713D43]/30 text-[#713D43] flex items-start gap-2">
+            <div className="p-3.5 bg-[#FDF4F5] border border-[#713D43]/30 text-[#713D43] flex items-start gap-2 overflow-hidden">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <span className="min-w-0 break-words">{error}</span>
             </div>
           )}
 

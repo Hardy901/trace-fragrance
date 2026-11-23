@@ -68,7 +68,7 @@ test('Audit logs are strictly append-only, admin-restricted, and support order_c
   assert.match(rulesContent, /'order_deleted'/);
 });
 
-test('Admin manual order creation enforces verified admin email attribution and tracking atomicity', () => {
+test('Admin manual order creation enforces verified admin email attribution and customer tracking atomicity', () => {
   const ordersBlock = rulesContent.slice(
     rulesContent.indexOf('match /orders/{orderId}'),
     rulesContent.indexOf('match /order_tracking/{trackingKey}')
@@ -83,6 +83,10 @@ test('Admin manual order creation enforces verified admin email attribution and 
   );
   assert.match(
     trackingBlock,
-    /exists\(\/databases\/\$\(database\)\/documents\/orders\/\$\(incoming\(\)\.orderNumber\)\)\s*\|\|\s*existsAfter\(\/databases\/\$\(database\)\/documents\/orders\/\$\(incoming\(\)\.orderNumber\)\)/
+    /isValidInitialTrackingState\(incoming\(\)\)\s*&& existsAfter\(\/databases\/\$\(database\)\/documents\/orders\/\$\(incoming\(\)\.orderNumber\)\)/
+  );
+  assert.match(
+    trackingBlock,
+    /isVerifiedUser\(\)\s*&& incoming\(\)\.updatedAt == request\.time\s*&& isAdmin\(\)/
   );
 });

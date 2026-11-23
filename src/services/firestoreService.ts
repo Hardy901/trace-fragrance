@@ -268,6 +268,7 @@ export async function createAdminManualOrder(
     throw new Error('Order reference must match format TRC-XXXXXX-XXX (6–32 chars).');
   }
 
+  const verifiedActorEmail = (auth.currentUser?.email || actorEmail).trim();
   const normalizedEmail = params.customerEmail.trim().toLowerCase().slice(0, 160);
   const normalizedName = params.customerName.trim().slice(0, 120);
   const normalizedCity = params.city.trim().slice(0, 80);
@@ -302,7 +303,7 @@ export async function createAdminManualOrder(
     trackingNumber: cleanTrackingNumber,
     trackingKey,
     adminNotes: cleanAdminNotes,
-    updatedBy: actorEmail,
+    updatedBy: verifiedActorEmail,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -330,29 +331,36 @@ export async function createAdminManualOrder(
 
   const path = `orders/${orderNumber}`;
   try {
-    const existingSnap = await getDoc(doc(db, 'orders', orderNumber));
-    if (existingSnap.exists()) {
-      throw new Error(`Order reference "${orderNumber}" already exists. Leave blank to auto-generate.`);
+    if (rawCustomOrderNo) {
+      const existingSnap = await getDoc(doc(db, 'orders', orderNumber));
+      if (existingSnap.exists()) {
+        throw new Error(`Order reference "${orderNumber}" already exists. Leave blank to auto-generate.`);
+      }
     }
 
     const batch = writeBatch(db);
     batch.set(doc(db, 'orders', orderNumber), orderPayload);
     batch.set(doc(db, 'order_tracking', trackingKey), trackingPayload);
     await batch.commit();
-
-    await logAdminAudit(
-      'order_created',
-      orderNumber,
-      `Created manual ${params.paymentType === 'prepaid' ? 'UPI' : 'COD'} order ${orderNumber} for ${normalizedName} (${normalizedCity}, ₹${totalPrice}, ${params.fulfillmentStatus})`
-    );
-
-    return { orderNumber, trackingKey, totalPrice };
   } catch (error) {
     if (error instanceof Error && error.message.includes('already exists')) {
       throw error;
     }
     handleFirestoreError(error, OperationType.CREATE, path);
   }
+
+  // Record audit trail independently after order commit succeeds
+  try {
+    await logAdminAudit(
+      'order_created',
+      orderNumber,
+      `Created manual ${params.paymentType === 'prepaid' ? 'UPI' : 'COD'} order ${orderNumber} for ${normalizedName} (${normalizedCity}, ₹${totalPrice}, ${params.fulfillmentStatus})`
+    );
+  } catch (auditErr) {
+    console.warn('Order created, but audit log write failed:', auditErr);
+  }
+
+  return { orderNumber, trackingKey, totalPrice };
 }
 
 export async function publishStorePricing(
